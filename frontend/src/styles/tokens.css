@@ -1,0 +1,165 @@
+/* ==========================================================================
+   RAKSHA KAVACH — Modern Industrial Safety UI Design Tokens
+   Clean glassmorphism, refined dark mode, rounded modern edges, high legibility.
+   ========================================================================== */
+
+:root {
+  /* Surfaces */
+  --bg-app: #0b0f14;
+  --surface-panel: #131922;
+  --surface-panel-subtle: #18202b;
+  --surface-hover: #212c3b;
+  --surface-active: #2a3749;
+  --surface-glass: rgba(19, 25, 34, 0.85);
+
+  /* Modern Glass & Borders */
+  --border-hairline: rgba(255, 255, 255, 0.08);
+  --border-active: rgba(255, 255, 255, 0.18);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+  --border-glow-red: rgba(239, 68, 68, 0.4);
+  --border-glow-amber: rgba(245, 158, 11, 0.4);
+  --border-glow-green: rgba(34, 197, 94, 0.4);
+
+  /* Typography */
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Text Colors */
+  --text-primary: #f1f5f9;
+  --text-dim: #94a3b8;
+  --text-muted: #64748b;
+  --text-inverse: #0b0f14;
+
+  /* Modern Safety Colors */
+  --safety-green: #22c55e;
+  --safety-green-bg: rgba(34, 197, 94, 0.12);
+  --safety-green-border: rgba(34, 197, 94, 0.35);
+
+  --safety-amber: #f59e0b;
+  --safety-amber-bg: rgba(245, 158, 11, 0.12);
+  --safety-amber-border: rgba(245, 158, 11, 0.35);
+
+  --safety-red: #ef4444;
+  --safety-red-bg: rgba(239, 68, 68, 0.14);
+  --safety-red-border: rgba(239, 68, 68, 0.45);
+
+  --safety-blue: #3b82f6;
+  --safety-blue-bg: rgba(59, 130, 246, 0.12);
+  --safety-blue-border: rgba(59, 130, 246, 0.35);
+
+  /* Dimensions & Radius */
+  --navbar-height: 58px;
+  --ticker-height: 110px;
+  --panel-radius: 12px;
+  --card-radius: 10px;
+  --btn-radius: 8px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  user-select: none;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface-panel);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-active);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Status Indicators */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  border-radius: 20px;
+  border: 1px solid transparent;
+}
+
+.status-pill.ok {
+  background-color: var(--safety-green-bg);
+  border-color: var(--safety-green-border);
+  color: var(--safety-green);
+}
+
+.status-pill.warn {
+  background-color: var(--safety-amber-bg);
+  border-color: var(--safety-amber-border);
+  color: var(--safety-amber);
+}
+
+.status-pill.critical {
+  background-color: var(--safety-red-bg);
+  border-color: var(--safety-red-border);
+  color: var(--safety-red);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.ok {
+  background-color: var(--safety-green);
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.7);
+}
+
+.status-dot.warn {
+  background-color: var(--safety-amber);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
+}
+
+.status-dot.critical,
+.status-dot.fire {
+  background-color: var(--safety-red);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.9);
+  animation: pulse-critical 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse-critical {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+@keyframes flash-new-alert {
+  0% { background-color: rgba(245, 158, 11, 0.35); }
+  100% { background-color: transparent; }
+}
+
+.animate-flash {
+  animation: flash-new-alert 1.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+}

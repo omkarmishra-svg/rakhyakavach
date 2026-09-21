@@ -1,0 +1,86 @@
+
+Frontend Design System
+“Sentry Floor” — Dashboard Design for the Factory Safety AI Prototype
+
+1. Design Brief
+Subject: a real-time monitoring dashboard for factory safety officers watching live PPE compliance and fire/smoke detection across a plant.
+Audience: in the demo, hackathon judges; in reality, EHS (Environmental Health & Safety) managers and floor supervisors — people who glance at this screen for seconds at a time, often from across a room, and need to know instantly whether something needs their attention.
+Primary job of the screen: surface the one thing that matters (an active hazard) faster than a human scanning a bank of raw CCTV feeds could — and do it in a way that reads as credible industrial software, not a generic startup SaaS demo.
+Why this matters for judging: in a hackathon, the frontend is the only part most judges actually experience. A dashboard that looks like a templated admin-panel kit undersells a genuinely good detection pipeline. A dashboard that looks like it belongs in a real plant control room signals the team understood the domain, not just the model.
+
+2. Where the Design Comes From
+Instead of borrowing a generic SaaS look, this design is grounded in the actual visual language of industrial safety:
+ANSI Z535 safety colors — the same red/amber/green coding used on real hazard signage, gauges, and alarm panels — used here functionally only (to mean danger/warning/safe), never decoratively.
+Control-room instrumentation — flat rectangular panels, hairline borders, near-zero border-radius. Real industrial hardware doesn’t have rounded plastic-app corners or soft drop shadows; this dashboard doesn’t either.
+The live feed as the literal hero — not a marketing headline or a big stat. The first thing anyone sees is the actual detection happening, because that live, provable moment is the product’s real value.
+This deliberately avoids the current default “AI-generated dashboard” look: no warm cream-and-terracotta palette, no near-black-with-single-neon-accent, no identical rounded SaaS cards with soft grey shadows, no all-caps eyebrow labels or decorative middle-dot meta strings.
+
+3. Design Tokens
+Color
+Token
+Hex
+Use
+Background
+#14181C
+App base — dark graphite, not pure black
+Panel
+#1E242A
+Rail, ticker, header surfaces
+Border
+#313A42
+Hairline dividers between instrument panels
+Text primary
+#E8EDF1
+Body/headline text
+Text dim
+#8B98A5
+Secondary labels, metadata
+Safety Green
+#4FAE7B
+Compliant / OK status — functional only
+Safety Amber
+#F2A93B
+Warning / PPE violation — functional only
+Safety Red
+#E14B3D
+Critical / fire-smoke hazard — functional only
+The three status colors are the only saturated colors on the entire screen. Everything else stays neutral graphite so that when something actually needs attention, it visually interrupts — the same principle behind why a single red gauge light stands out on an otherwise grey instrument panel.
+Typography
+Role
+Typeface
+Why
+Display / headlines / big numbers
+Barlow Condensed (Bold)
+Condensed industrial sans — echoes factory signage and gauge labeling without being a literal stencil-font cliché
+Body / data / labels
+IBM Plex Sans
+Designed for technical/engineering software; highly legible at small sizes for dense data
+(The screenshot in this document uses locally available equivalents — DejaVu Sans Condensed and Liberation Sans — since this environment has no internet access to load the Google Fonts versions. Swap in Barlow Condensed + IBM Plex Sans via Google Fonts when you build the real thing — both are free.)
+Two families only, clearly distinct from each other (condensed display vs. regular body) — no third accent typeface, no monospace used decoratively for labels.
+Layout concept
+“Instrument wall” — the screen is read top-to-bottom, left-to-right, like a control room:
+┌─────────────────────────────────────────────────────────┐│ PLANT NAME     94% COMPLIANCE   2 WARN   1 FIRE   12 CAM │ ← top status bar├───────────────────────────────┬───────────────────────────┤│ CAM-04 · Paint Booth            │  ZONE STATUS — 6 ZONES    ││                                  │  ● Assembly Line 2   OK   ││   [ live feed, bounding boxes ] │  ▲ Loading Dock B  WARN   ││                                  │  ■ Paint Booth      FIRE  ││                                  │  ● Warehouse East    OK   ││                                  │  ▲ Welding Bay 1   WARN   ││                                  │  ● Main Entrance     OK   ││                                  │  [ violations — 12h chart]│├───────────────────────────────┴───────────────────────────┤│ INCIDENT LOG  14:32 SMOKE · Paint Booth   14:29 NO-HELMET…│└─────────────────────────────────────────────────────────┘
+Left-aligned throughout; numbers get room to breathe (large digit sizes for compliance %, alert counts) so they read like real gauge output, not a buried stat in a small card.
+
+4. The Screen
+
+Sentry Floor dashboard mockup
+What’s on screen and why: - Top status bar — plant name, live compliance %, active violation count, hazard count, cameras online. This is what a supervisor checks in the first two seconds. - Hero live feed — the actual camera with bounding boxes drawn live: green for compliant workers, amber for PPE violations, red for fire/smoke — directly reusing the same three status colors, so the visual language is consistent from the top bar down to individual boxes. - Zone status rail — every monitored zone at a glance, colored dot + one-line detail, so a viewer can tell plant-wide health without watching every camera. - Violations trend (bottom of rail) — a 12-hour bar trend, colored by severity. This is what turns the dashboard from “an alert box” into “an insights tool,” directly answering the PS’s ask for actionable insights. - Incident log ticker — timestamped, zoned, confidence-scored, with an action state (alert sent / logged) — this is the audit trail that makes the system usable as evidence, not just a notification.
+
+5. Screen Flow
+
+Screen flow diagram
+Live Dashboard is the default/home screen (the one shown above) — everything else is one click deeper.
+Incident Detail opens from clicking any ticker row or bounding box: full snapshot, confidence, zone history for that violation type.
+Zone Deep-Dive opens from clicking a zone in the rail: that camera’s feed plus its own violation history.
+Compliance Analytics is a dedicated view for trend charts, per-zone breakdowns, and exporting a report (ties back to the “audit-ready evidence” business angle from your plan document).
+Alert Actions (acknowledge/escalate/resolve) live inside Incident Detail — this is what proves the “actionable” part of the PS, not just detection.
+For a hackathon demo, build the Live Dashboard first — it’s the screen judges will actually see and remember. Incident Detail and Analytics are worth having as a second screen if time allows, but a polished single screen beats four half-built ones.
+
+6. Principles to Hold Onto While Building
+Color is a signal, not a theme. Keep 95% of the UI neutral graphite. The instant something is wrong, it should visually punch through — that only works if color is scarce everywhere else.
+The live feed is the hero, always. Don’t bury it behind stat cards or a marketing-style header. It’s the proof the system works.
+Flat over rounded. No soft drop shadows, no heavy border-radius — panels read as instruments, not app cards.
+Numbers get to be big. Compliance %, alert counts — size them like a real gauge readout.
+One accent moment, not scattered motion. If you add any animation, make it the moment a new alert lands in the ticker (a brief highlight flash) — not hover effects on every element.
+Say what happened, plainly. “NO HELMET · Paint Booth · confidence 0.91” beats a vague “Alert triggered” — the interface should read like an instrument, stating facts, not narrating them.

@@ -272,13 +272,16 @@ class PPEDetector:
         if ty2 > ty1 and tx2 > tx1:
             torso_crop = frame[ty1:ty2, tx1:tx2]
             hsv_torso = cv2.cvtColor(torso_crop, cv2.COLOR_BGR2HSV)
-            # High-visibility neon yellow/green or safety fluorescent orange
-            neon_green = cv2.inRange(hsv_torso, np.array([25, 75, 75]), np.array([85, 255, 255]))
-            safety_orange = cv2.inRange(hsv_torso, np.array([5, 110, 110]), np.array([24, 255, 255]))
+            # High-visibility neon yellow/green, safety fluorescent orange, or reflective workwear
+            neon_green = cv2.inRange(hsv_torso, np.array([18, 45, 60]), np.array([90, 255, 255]))
+            safety_orange = cv2.inRange(hsv_torso, np.array([3, 80, 80]), np.array([25, 255, 255]))
+            reflective_silver = cv2.inRange(hsv_torso, np.array([0, 0, 160]), np.array([180, 45, 255]))
+            
             vest_mask = cv2.bitwise_or(neon_green, safety_orange)
+            vest_mask = cv2.bitwise_or(vest_mask, reflective_silver)
             vest_ratio = np.sum(vest_mask > 0) / float(vest_mask.size)
 
-            if vest_ratio > 0.14:
+            if vest_ratio > 0.07:
                 heuristics.append(
                     PPEDetectionResult([tx1, ty1, tx2, ty2], "vest", min(0.96, 0.72 + vest_ratio * 0.24))
                 )

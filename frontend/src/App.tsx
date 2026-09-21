@@ -11,11 +11,9 @@ import { AnalyticsView } from './components/AnalyticsView';
 import {
   INITIAL_ZONES,
   INITIAL_TELEMETRY,
-  INITIAL_HOURLY_VIOLATIONS,
-  INITIAL_INCIDENTS,
   CAMERA_DETECTIONS
 } from './data/mockData';
-import { Zone, Incident, IncidentStatus, DetectionItem, PlantTelemetry } from './types';
+import { Zone, Incident, IncidentStatus, DetectionItem, PlantTelemetry, HourlyViolation } from './types';
 import { soundEngine } from './utils/audio';
 import { Video, Camera, Radio } from 'lucide-react';
 
@@ -76,8 +74,8 @@ export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<NavTab>('vision');
   const [zones] = useState<Zone[]>(INITIAL_ZONES);
   const [telemetry, setTelemetry] = useState<PlantTelemetry>(INITIAL_TELEMETRY);
-  const [hourlyViolations] = useState(INITIAL_HOURLY_VIOLATIONS);
-  const [incidents, setIncidents] = useState<Incident[]>(INITIAL_INCIDENTS);
+  const [hourlyViolations, setHourlyViolations] = useState<HourlyViolation[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
   const [newestIncidentId, setNewestIncidentId] = useState<string | null>(null);
 
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
@@ -127,8 +125,39 @@ export const App: React.FC = () => {
   const activeZone = zones.find((z) => z.zone_id === activeCam.zoneId) || zones[0];
   const activeDetections = CAMERA_DETECTIONS[activeZone.camera_id] || [];
 
-  // Poll backend telemetry
+  // 1. Fetch real incidents directly from SQLite database (incidents.db)
+  const loadDatabaseIncidents = useCallback(async () => {
+    try {
+      const res = await fetch('/api/incidents?limit=100');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setIncidents(data);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching database incidents', err);
+    }
+  }, []);
+
+  // 2. Fetch real analytics & hourly distribution from database
+  const loadDatabaseAnalytics = useCallback(async () => {
+    try {
+      const res = await fetch('/api/analytics');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.hourly_violations && data.hourly_violations.length > 0) {
+          setHourlyViolations(data.hourly_violations);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // 3. Poll backend database telemetry & incidents
   useEffect(() => {
+    loadDatabaseIncidents();
+    loadDatabaseAnalytics();
+
     const fetchBackendData = async () => {
       try {
         const res = await fetch('/api/telemetry');
@@ -138,10 +167,11 @@ export const App: React.FC = () => {
         }
       } catch {}
     };
+
     fetchBackendData();
     const interval = setInterval(fetchBackendData, 4000);
     return () => clearInterval(interval);
-  }, []);
+  }, [loadDatabaseIncidents, loadDatabaseAnalytics]);
 
   // Switch the single streamed camera
   const handleSwitchCamera = (camId: number) => {

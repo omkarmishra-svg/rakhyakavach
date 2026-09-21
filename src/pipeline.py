@@ -146,6 +146,30 @@ class SafetyPipeline:
             compliant_workers = sum(1 for w in worker_compliances if w.is_compliant)
             compliance_pct = round((compliant_workers / total_workers * 100), 1) if total_workers > 0 else 100.0
 
+            # Build detailed 3-tier status for every detected worker
+            worker_details = []
+            for w in worker_compliances:
+                req_count = len(w.required_ppe) if w.required_ppe else 1
+                missing_count = len(w.missing_ppe)
+                if missing_count == 0:
+                    status = "COMPLIANT"
+                    color = "#00e676"  # Green
+                elif missing_count >= req_count or len(w.worn_ppe) == 0:
+                    status = "MISSING ALL"
+                    color = "#ff1744"  # Red
+                else:
+                    status = "PARTIAL"
+                    color = "#ffb300"  # Yellow
+
+                worker_details.append({
+                    "worker_id": w.worker_id,
+                    "status": status,
+                    "color": color,
+                    "worn_ppe": list(w.worn_ppe.keys()),
+                    "missing_ppe": w.missing_ppe,
+                    "box": w.box,
+                })
+
             self._cached_summary = {
                 "zone_id": zone.zone_id,
                 "zone_name": zone.name,
@@ -156,6 +180,7 @@ class SafetyPipeline:
                 "hazards_detected": len(hazard_dets),
                 "active_alerts": len(new_alerts),
                 "fps": self._last_fps,
+                "workers": worker_details,
                 "violations_in_frame": [
                     {"worker_id": w.worker_id, "missing": w.missing_ppe}
                     for w in worker_compliances if not w.is_compliant
@@ -180,58 +205,63 @@ class SafetyPipeline:
         h, w = frame.shape[:2]
 
         # 1. Top HUD Header Bar
-        banner_h = 44
+        banner_h = 36
         overlay = frame.copy()
-        cv2.rectangle(overlay, (0, 0), (w, banner_h), (20, 24, 33), -1)
+        cv2.rectangle(overlay, (0, 0), (w, banner_h), (15, 23, 42), -1)
         cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
 
-        # Title & Zone
+        # Title
         cv2.putText(
-            frame, "RAKSHA KAVACH", (15, 28),
-            cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 220, 255), 2
-        )
-        zone_str = f"Zone: {summary.get('zone_name', 'Default')} [{summary.get('risk_level', 'Normal')}]"
-        cv2.putText(
-            frame, zone_str, (210, 28),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (230, 230, 230), 1
+            frame, "RAKSHA KAVACH REAL-TIME SENTINEL", (12, 24),
+            cv2.FONT_HERSHEY_DUPLEX, 0.55, (0, 242, 254), 1
         )
 
         # Compliance Badge
         comp_pct = summary.get("compliance_pct", 100.0)
-        badge_color = (0, 210, 80) if comp_pct >= 90 else ((0, 165, 255) if comp_pct >= 60 else (40, 40, 240))
-        comp_str = f"Compliance: {comp_pct}%"
+        badge_color = (0, 210, 80) if comp_pct >= 90 else ((0, 180, 255) if comp_pct >= 60 else (40, 40, 240))
+        comp_str = f"COMPLIANCE: {comp_pct}%"
         cv2.putText(
-            frame, comp_str, (w - 280, 28),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.6, badge_color, 2
+            frame, comp_str, (w - 240, 24),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.5, badge_color, 2
         )
 
         # FPS counter
         fps_str = f"{summary.get('fps', 0.0):.1f} FPS"
         cv2.putText(
-            frame, fps_str, (w - 95, 28),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (160, 160, 160), 1
+            frame, fps_str, (w - 80, 24),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 160, 160), 1
         )
 
-        # 2. Worker Bounding Boxes & Attribution Tags
+        # 2. Worker Bounding Boxes & 3-Tier Attribution Tags (Green/Yellow/Red)
         for worker in workers:
             x1, y1, x2, y2 = worker.box
-            if worker.is_compliant:
-                box_color = (0, 210, 80)  # Green
-                status_text = f"Worker #{worker.worker_id} [COMPLIANT]"
-            else:
-                box_color = (40, 40, 230)  # Red
-                missing_str = ", ".join(worker.missing_ppe).upper()
-                status_text = f"Worker #{worker.worker_id} [NO {missing_str}]"
+            req_count = len(worker.required_ppe) if worker.required_ppe else 1
+            missing_count = len(worker.missing_ppe)
 
-            # Draw worker bounding box
+            if missing_count == 0:
+                # GREEN: All required equipment worn
+                box_color = (0, 210, 80)  # BGR Green
+                status_text = f"Worker #{worker.worker_id} [ALL PPE OK]"
+            elif missing_count >= req_count or len(worker.worn_ppe) == 0:
+                # RED: All required equipment missing
+                box_color = (40, 40, 240)  # BGR Red
+                missing_str = ", ".join(worker.missing_ppe).upper()
+                status_text = f"Worker #{worker.worker_id} [NO PPE: {missing_str}]"
+            else:
+                # YELLOW: Partial equipment missing
+                box_color = (0, 215, 255)  # BGR Yellow
+                missing_str = ", ".join(worker.missing_ppe).upper()
+                status_text = f"Worker #{worker.worker_id} [MISSING: {missing_str}]"
+
+            # Draw square worker bounding box
             cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
 
             # Label banner
-            (tw, th), _ = cv2.getTextSize(status_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
-            cv2.rectangle(frame, (x1, max(0, y1 - 24)), (x1 + tw + 10, y1), box_color, -1)
+            (tw, th), _ = cv2.getTextSize(status_text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+            cv2.rectangle(frame, (x1, max(0, y1 - 22)), (x1 + tw + 8, y1), box_color, -1)
             cv2.putText(
-                frame, status_text, (x1 + 5, max(14, y1 - 7)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2
+                frame, status_text, (x1 + 4, max(14, y1 - 6)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0) if box_color == (0, 215, 255) else (255, 255, 255), 1
             )
 
         # 3. Fire and Smoke Hazard Highlights

@@ -45,13 +45,13 @@ class SpatialAttributor:
     """Matches detected gear to corresponding human bounding boxes."""
 
     # Gear category normalizations
-    HELMET_ALIASES = {"helmet", "hard_hat", "hard-hat", "hat", "cap"}
-    VEST_ALIASES = {"vest", "safety_vest", "safety-vest", "reflective_jacket"}
+    HELMET_ALIASES = {"helmet", "hardhat", "hard_hat", "hard-hat", "hat", "cap"}
+    VEST_ALIASES = {"vest", "safety_vest", "safety-vest", "safety vest", "reflective_jacket"}
     BOOTS_ALIASES = {"boots", "safety_boots", "shoes"}
     GLOVES_ALIASES = {"gloves", "safety_gloves"}
-    GOGGLES_ALIASES = {"goggles", "safety_glasses"}
+    GOGGLES_ALIASES = {"goggles", "safety_glasses", "mask"}
 
-    def __init__(self, min_containment_threshold: float = 0.25):
+    def __init__(self, min_containment_threshold: float = 0.20):
         self.min_containment_threshold = min_containment_threshold
 
     @staticmethod
@@ -69,16 +69,16 @@ class SpatialAttributor:
     @classmethod
     def _normalize_gear_name(cls, class_name: str) -> Optional[str]:
         """Map raw detection class names to canonical safety equipment names."""
-        name = class_name.lower().strip()
-        if name in cls.HELMET_ALIASES:
+        name = class_name.lower().strip().replace("-", "_").replace(" ", "_")
+        if name in {"helmet", "hardhat", "hard_hat", "cap"}:
             return "helmet"
-        if name in cls.VEST_ALIASES:
+        if name in {"vest", "safety_vest", "reflective_jacket"}:
             return "vest"
-        if name in cls.BOOTS_ALIASES:
+        if name in {a.replace("-", "_").replace(" ", "_") for a in cls.BOOTS_ALIASES}:
             return "boots"
-        if name in cls.GLOVES_ALIASES:
+        if name in {a.replace("-", "_").replace(" ", "_") for a in cls.GLOVES_ALIASES}:
             return "gloves"
-        if name in cls.GOGGLES_ALIASES:
+        if name in {a.replace("-", "_").replace(" ", "_") for a in cls.GOGGLES_ALIASES}:
             return "goggles"
         return None
 

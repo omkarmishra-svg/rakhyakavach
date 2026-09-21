@@ -1,19 +1,28 @@
 import React from 'react';
-import { Shield, LayoutGrid, Maximize2, Minimize2, Volume2, VolumeX } from 'lucide-react';
+import {
+  Camera,
+  Shield,
+  FileText,
+  BarChart2,
+  Volume2,
+  VolumeX,
+  Maximize2
+} from 'lucide-react';
+import { PlantTelemetry } from '../types';
 import { soundEngine } from '../utils/audio';
 
+export type NavTab = 'vision' | 'incidents' | 'analytics';
+
 interface NavBarProps {
-  isFullscreenActive: boolean;
-  onToggleFullscreenMode: () => void;
-  onSetGridMode: () => void;
-  activeCamName?: string;
+  currentTab: NavTab;
+  onSelectTab: (tab: NavTab) => void;
+  telemetry: PlantTelemetry;
 }
 
 export const NavBar: React.FC<NavBarProps> = ({
-  isFullscreenActive,
-  onToggleFullscreenMode,
-  onSetGridMode,
-  activeCamName
+  currentTab,
+  onSelectTab,
+  telemetry
 }) => {
   const [isMuted, setIsMuted] = React.useState<boolean>(false);
   const [timeStr, setTimeStr] = React.useState<string>('');
@@ -33,7 +42,7 @@ export const NavBar: React.FC<NavBarProps> = ({
     setIsMuted(muted);
   };
 
-  const handleToggleBrowserFullscreen = () => {
+  const handleToggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
     } else {
@@ -43,6 +52,9 @@ export const NavBar: React.FC<NavBarProps> = ({
     }
   };
 
+  const complianceClass =
+    telemetry.compliance_pct >= 90 ? 'ok' : telemetry.compliance_pct >= 75 ? 'warn' : 'critical';
+
   return (
     <nav className="modern-navbar">
       {/* Brand & Live Indicator */}
@@ -51,54 +63,69 @@ export const NavBar: React.FC<NavBarProps> = ({
           <Shield size={20} className="brand-icon" />
           <div className="brand-text-container">
             <span className="brand-title">RAKSHA KAVACH</span>
-            <span className="brand-subtitle">Real-Time Multi-Camera AI Sentinel</span>
+            <span className="brand-subtitle">AI SAFETY SENTINEL</span>
           </div>
         </div>
 
         <div className="live-status-chip">
           <span className="live-pulse-dot" />
-          <span className="live-label">LIVE EDGE AI</span>
+          <span className="live-label">LIVE</span>
           <span className="live-time">{timeStr}</span>
         </div>
       </div>
 
-      {/* Center View Controls: 4-Camera Grid vs Full-Screen View */}
+      {/* Center Navigation Tabs */}
       <div className="navbar-tabs">
         <button
-          className={`nav-tab-btn ${!isFullscreenActive ? 'active' : ''}`}
-          onClick={onSetGridMode}
-          title="Switch to 4-Camera Grid View"
+          className={`nav-tab-btn ${currentTab === 'vision' ? 'active' : ''}`}
+          onClick={() => onSelectTab('vision')}
         >
-          <LayoutGrid size={16} />
-          <span>4-Camera Grid</span>
+          <Camera size={16} />
+          <span>Live Vision</span>
         </button>
 
         <button
-          className={`nav-tab-btn ${isFullscreenActive ? 'active' : ''}`}
-          onClick={onToggleFullscreenMode}
-          title="Expand Camera to Full-Screen Hazard Focus"
+          className={`nav-tab-btn ${currentTab === 'incidents' ? 'active' : ''}`}
+          onClick={() => onSelectTab('incidents')}
         >
-          {isFullscreenActive ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          <span>{isFullscreenActive ? `Focus: ${activeCamName || 'Camera'}` : 'Full-Screen Focus'}</span>
+          <FileText size={16} />
+          <span>Audit Logs</span>
+          {telemetry.active_warnings > 0 && (
+            <span className="tab-pill-badge warn">{telemetry.active_warnings}</span>
+          )}
+        </button>
+
+        <button
+          className={`nav-tab-btn ${currentTab === 'analytics' ? 'active' : ''}`}
+          onClick={() => onSelectTab('analytics')}
+        >
+          <BarChart2 size={16} />
+          <span>Analytics</span>
         </button>
       </div>
 
-      {/* Right Quick Actions */}
+      {/* Right Quick Actions & Metrics */}
       <div className="navbar-actions">
-        {/* Siren Audio Mute/Unmute */}
+        {/* Compliance Gauge Pill */}
+        <div className={`metric-pill ${complianceClass}`} title="Plant-wide PPE & Hazard Compliance">
+          <span className="metric-pill-label">COMPLIANCE</span>
+          <span className="metric-pill-value">{telemetry.compliance_pct.toFixed(1)}%</span>
+        </div>
+
+        {/* Audio Mute/Unmute */}
         <button
           className={`icon-action-btn ${isMuted ? 'muted' : 'active'}`}
           onClick={handleToggleAudio}
-          title={isMuted ? 'Unmute Siren Audio' : 'Siren Audio Active (Click to Mute)'}
+          title={isMuted ? 'Unmute Audio Siren' : 'Siren Active (Click to Mute)'}
         >
           {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
         </button>
 
-        {/* Browser Fullscreen */}
+        {/* Fullscreen */}
         <button
           className="icon-action-btn"
-          onClick={handleToggleBrowserFullscreen}
-          title="Toggle Browser Fullscreen"
+          onClick={handleToggleFullscreen}
+          title="Toggle Fullscreen"
         >
           <Maximize2 size={16} />
         </button>

@@ -28,23 +28,25 @@ interface HeroLiveFeedProps {
   onNewIncidentDetected?: (incident: any) => void;
   onSelectLiveCamera?: () => void;
   onSelectCCTV?: () => void;
+  onInferenceWorkers?: (workers: any[]) => void;
 }
 
 export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
   currentZone,
   allZones: _allZones,
-  detections,
+  detections: _detections,
   isWebcamActive,
   activeVideoSrc,
   activeVideoName,
   onToggleWebcam,
-  onSelectCamera,
+  onSelectCamera: _onSelectCamera,
   onSelectDetection,
   onCaptureSnapshot,
   onOpenSourceModal,
   onNewIncidentDetected,
   onSelectLiveCamera,
-  onSelectCCTV
+  onSelectCCTV,
+  onInferenceWorkers
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -56,16 +58,49 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
   const [showGrid, setShowGrid] = useState<boolean>(false);
   const [webcamError, setWebcamError] = useState<string | null>(null);
   const [hoveredDetection, setHoveredDetection] = useState<string | null>(null);
+  const [snapshotToast, setSnapshotToast] = useState<boolean>(false);
 
   // Dynamic AI inference detections from backend
   const [aiDetectedWorkers, setAiDetectedWorkers] = useState<any[]>([]);
   const [isInferencing, setIsInferencing] = useState<boolean>(false);
 
-  // Face webcam compliance simulation state
-  const [simulatedHelmet, setSimulatedHelmet] = useState<boolean>(true);
-  const [simulatedVest, setSimulatedVest] = useState<boolean>(true);
-  const [simulatedGoggles, setSimulatedGoggles] = useState<boolean>(true);
-  const [snapshotToast, setSnapshotToast] = useState<boolean>(false);
+  // Fallback initial workers showing 3-tier colors: Green, Yellow, Red
+  const sampleWorkersFallback = [
+    {
+      worker_id: 1,
+      box: [18, 16, 42, 85],
+      is_compliant: true,
+      status: 'COMPLIANT',
+      color: '#00e676',
+      worn_ppe: ['Helmet', 'High-Vis Vest', 'Boots'],
+      missing_ppe: []
+    },
+    {
+      worker_id: 2,
+      box: [48, 22, 70, 88],
+      is_compliant: false,
+      status: 'PARTIAL',
+      color: '#ffb300',
+      worn_ppe: ['Hard Hat', 'Boots'],
+      missing_ppe: ['Safety Vest']
+    },
+    {
+      worker_id: 3,
+      box: [74, 28, 92, 88],
+      is_compliant: false,
+      status: 'MISSING ALL',
+      color: '#ff1744',
+      worn_ppe: [],
+      missing_ppe: ['Hard Hat', 'Safety Vest', 'Boots']
+    }
+  ];
+
+  // Notify parent of initial sample workers so the alert grid is immediately populated
+  useEffect(() => {
+    if (onInferenceWorkers && aiDetectedWorkers.length === 0) {
+      onInferenceWorkers(sampleWorkersFallback);
+    }
+  }, []);
 
   // Manage video playback & webcam stream
   useEffect(() => {
@@ -164,7 +199,11 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
         if (data.ok && data.workers && data.workers.length > 0) {
           setAiDetectedWorkers(data.workers);
 
-          // If there is any non-compliant worker, notify parent
+          if (onInferenceWorkers) {
+            onInferenceWorkers(data.workers);
+          }
+
+          // If there is any non-compliant worker, notify parent incident tracker
           const violationWorker = data.workers.find((w: any) => !w.is_compliant);
           if (violationWorker && onNewIncidentDetected) {
             onNewIncidentDetected({
@@ -176,15 +215,15 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
         }
       }
     } catch {
-      // Backend unavailable or busy; client overlay remains active
+      // Backend unavailable or busy; keep client overlay active
     } finally {
       setIsInferencing(false);
     }
-  }, [isInferencing, isWebcamActive, currentZone, onNewIncidentDetected]);
+  }, [isInferencing, isWebcamActive, currentZone, onNewIncidentDetected, onInferenceWorkers]);
 
   // Schedule periodic frame inference
   useEffect(() => {
-    const interval = setInterval(runFrameInference, 600);
+    const interval = setInterval(runFrameInference, 650);
     return () => clearInterval(interval);
   }, [runFrameInference]);
 
@@ -223,26 +262,46 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
     } catch {}
   };
 
-  // Combine static fallback detections with backend AI detections
-  const activeDetectionsToRender = aiDetectedWorkers.length > 0
-    ? aiDetectedWorkers.map((w) => ({
-        id: `AI-WORKER-${w.worker_id}`,
-        type: 'worker' as const,
-        worker_id: w.worker_id,
-        box: w.box as [number, number, number, number],
-        status: w.is_compliant ? ('compliant' as const) : ('violation' as const),
-        label: w.is_compliant
-          ? `WORKER #${w.worker_id} · COMPLIANT`
-          : `WORKER #${w.worker_id} · MISSING ${(w.missing_ppe || []).join(', ').toUpperCase() || 'PPE'}`,
-        confidence: 0.88
-      }))
-    : detections.filter((d) => {
-        if (d.type === 'hazard' && !showFire) return false;
-        if (d.type === 'worker' && !showPPE) return false;
-        return true;
-      });
+  // Convert raw workers to renderable overlay squares with 3-tier colors
+  const activeWorkerList = aiDetectedWorkers.length > 0 ? aiDetectedWorkers : sampleWorkersFallback;
 
-  const isWebcamCompliant = simulatedHelmet && simulatedVest;
+  const activeDetectionsToRender = activeWorkerList.map((w: any) => {
+    const missing = w.missing_ppe || [];
+    const worn = w.worn_ppe || [];
+    const isCompliant = w.is_compliant || (missing.length === 0 && worn.length > 0);
+    const isMissingAll = !isCompliant && (worn.length === 0 || missing.length >= 3);
+
+    let status: 'COMPLIANT' | 'PARTIAL' | 'MISSING ALL';
+    let strokeColor: string;
+    let labelText: string;
+
+    if (isCompliant) {
+      status = 'COMPLIANT';
+      strokeColor = '#00e676'; // GREEN if everything is right
+      labelText = `WORKER #${w.worker_id} · ALL PPE DETECTED`;
+    } else if (isMissingAll) {
+      status = 'MISSING ALL';
+      strokeColor = '#ff1744'; // RED if everything is missing
+      labelText = `WORKER #${w.worker_id} · ALL MISSING: ${missing.join(', ').toUpperCase() || 'NO PPE'}`;
+    } else {
+      status = 'PARTIAL';
+      strokeColor = '#ffb300'; // YELLOW if anything is missing
+      labelText = `WORKER #${w.worker_id} · MISSING: ${missing.join(', ').toUpperCase()}`;
+    }
+
+    return {
+      id: `WORKER-${w.worker_id}`,
+      type: 'worker' as const,
+      worker_id: w.worker_id,
+      box: w.box as [number, number, number, number],
+      status,
+      color: strokeColor,
+      missing_ppe: missing,
+      worn_ppe: worn,
+      label: labelText,
+      confidence: 0.94
+    };
+  });
 
   return (
     <section className="hero-feed-panel">
@@ -256,82 +315,51 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
             <Camera size={16} className="cam-icon" />
             <span className="cam-id">
               {isWebcamActive
-                ? 'LIVE WEBCAM'
+                ? 'CAM 02'
                 : activeVideoName !== 'Standard CCTV'
-                ? 'UPLOADED VIDEO'
-                : currentZone.camera_id}
+                ? 'UPLOAD FEED'
+                : currentZone.camera_id || 'CAM 01'}
             </span>
             <span className="cam-separator">·</span>
             <span className="cam-name">
               {isWebcamActive
-                ? 'OPERATOR FACE SENTINEL'
+                ? 'OPERATOR LIVE WEBCAM'
                 : activeVideoName !== 'Standard CCTV'
                 ? activeVideoName
                 : currentZone.name}
             </span>
           </div>
 
-          <span
-            className={`status-pill ${
-              isWebcamActive
-                ? isWebcamCompliant
-                  ? 'ok'
-                  : 'warn'
-                : currentZone.status === 'OK'
-                ? 'ok'
-                : currentZone.status === 'WARN'
-                ? 'warn'
-                : 'critical'
-            }`}
-          >
-            <span
-              className={`status-dot ${
-                isWebcamActive
-                  ? isWebcamCompliant
-                    ? 'ok'
-                    : 'warn'
-                  : currentZone.status.toLowerCase()
-              }`}
-            />
-            {isWebcamActive
-              ? isWebcamCompliant
-                ? 'PPE COMPLIANT'
-                : 'PPE BREACH DETECTED'
-              : currentZone.status === 'OK'
-              ? 'SAFE'
-              : currentZone.status === 'WARN'
-              ? 'PPE WARNING'
-              : 'CRITICAL HAZARD'}
+          <span className="status-pill ok">
+            <span className="status-dot ok" />
+            LIVE STREAMING
           </span>
         </div>
 
-        {/* Video Source Controls: Exactly 1 Live Camera, 1 CCTV, 1 Upload */}
+        {/* Video Source Controls */}
         <div className="feed-camera-selector">
-          {/* 1. Live Camera */}
           <button
             className={`cam-switch-btn ${isWebcamActive ? 'active' : ''}`}
             onClick={onSelectLiveCamera || onToggleWebcam}
-            title="Single live hardware camera / webcam feed"
+            title="Switch to hardware camera / webcam"
           >
             <Camera size={13} style={{ marginRight: '4px' }} />
-            Live Camera
+            Webcam
           </button>
 
-          {/* 2. CCTV Feed */}
           <button
             className={`cam-switch-btn ${!isWebcamActive && activeVideoName === 'Standard CCTV' ? 'active' : ''}`}
-            onClick={onSelectCCTV || (() => onSelectCamera('CCTV'))}
-            title="Industrial CCTV surveillance feed"
+            onClick={onSelectCCTV || (() => onToggleWebcam())}
+            title="Switch to industrial CCTV feed"
           >
             <Video size={13} style={{ marginRight: '4px' }} />
-            CCTV Feed
+            CCTV Stream
           </button>
 
-          {/* 3. Upload Video */}
           <button
             className={`cam-switch-btn ${!isWebcamActive && activeVideoName !== 'Standard CCTV' ? 'active' : ''}`}
             onClick={onOpenSourceModal}
-            title="Upload custom factory video"
+            title="Upload custom footage"
           >
             <Upload size={13} style={{ marginRight: '4px' }} />
             Upload Video
@@ -352,7 +380,7 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
           playsInline
         />
 
-        {/* Webcam Error / Permission Prompt */}
+        {/* Webcam Error Overlay */}
         {isWebcamActive && webcamError && (
           <div className="webcam-error-overlay">
             <CameraOff size={42} className="error-icon" />
@@ -367,42 +395,38 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
         {/* Alignment Grid Overlay */}
         {showGrid && <div className="feed-alignment-grid" />}
 
-        {/* Snapshot Captured Toast Notification */}
+        {/* Snapshot Toast */}
         {snapshotToast && (
           <div className="snapshot-toast">
             <Sparkles size={16} />
-            <span>Audit Snapshot Captured & Logged!</span>
+            <span>Audit Evidence Captured & Logged!</span>
           </div>
         )}
 
-        {/* 1. CCTV / Uploaded Video Overlay: Real-time Bounding Boxes */}
-        {!isWebcamActive && (
+        {/* Real-time Bounding Box Overlays: Square boxes around each person with 3-tier colors */}
+        {showPPE && (
           <svg
             className="feed-overlay-canvas"
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
           >
-            {activeDetectionsToRender.map((det) => {
+            {activeDetectionsToRender.map((det: any) => {
               const [x1, y1, x2, y2] = det.box;
-              const width = x2 - x1;
-              const height = y2 - y1;
+              const width = Math.max(x2 - x1, 8);
+              const height = Math.max(y2 - y1, 14);
 
-              const isHazard = det.status === 'hazard';
-              const isViolation = det.status === 'violation';
-
-              const strokeColor = isHazard
-                ? 'var(--safety-red)'
-                : isViolation
-                ? 'var(--safety-amber)'
-                : 'var(--safety-green)';
-
-              const bgColor = isHazard
-                ? 'rgba(239, 68, 68, 0.18)'
-                : isViolation
-                ? 'rgba(245, 158, 11, 0.15)'
-                : 'rgba(34, 197, 94, 0.08)';
+              const strokeColor = det.color;
+              const bgColor =
+                strokeColor === '#00e676'
+                  ? 'rgba(0, 230, 118, 0.14)'
+                  : strokeColor === '#ff1744'
+                  ? 'rgba(255, 23, 68, 0.20)'
+                  : 'rgba(255, 179, 0, 0.16)';
 
               const isHovered = hoveredDetection === det.id;
+              const labelWidth = Math.max(width * 1.35, 36);
+              const labelHeight = 4.4;
+              const labelY = Math.max(0.6, y1 - labelHeight);
 
               return (
                 <g
@@ -412,6 +436,7 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
                   onMouseLeave={() => setHoveredDetection(null)}
                   onClick={() => onSelectDetection(det as any)}
                 >
+                  {/* Square / bounding box around person */}
                   <rect
                     x={x1}
                     y={y1}
@@ -419,90 +444,60 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
                     height={height}
                     fill={bgColor}
                     stroke={strokeColor}
-                    strokeWidth={isHovered ? '0.8' : '0.45'}
+                    strokeWidth={isHovered ? '0.9' : '0.6'}
+                    strokeDasharray={det.status === 'MISSING ALL' ? '2.5, 1' : 'none'}
                     rx="1"
                   />
 
-                  {/* Clean Label Pill */}
+                  {/* Corner accents for high-tech surveillance look */}
+                  <path
+                    d={`M ${x1} ${y1 + 3} L ${x1} ${y1} L ${x1 + 3} ${y1}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth="1.2"
+                  />
+                  <path
+                    d={`M ${x2 - 3} ${y1} L ${x2} ${y1} L ${x2} ${y1 + 3}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth="1.2"
+                  />
+                  <path
+                    d={`M ${x1} ${y2 - 3} L ${x1} ${y2} L ${x1 + 3} ${y2}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth="1.2"
+                  />
+                  <path
+                    d={`M ${x2 - 3} ${y2} L ${x2} ${y2} L ${x2} ${y2 - 3}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth="1.2"
+                  />
+
+                  {/* Clean label banner showing missing equipment or compliance */}
                   <rect
                     x={x1}
-                    y={Math.max(1, y1 - 4.2)}
-                    width={Math.max(width * 1.15, 26)}
-                    height="4.0"
+                    y={labelY}
+                    width={labelWidth}
+                    height={labelHeight}
                     fill={strokeColor}
-                    rx="0.8"
+                    rx="0.6"
                   />
                   <text
                     x={x1 + 1}
-                    y={Math.max(1, y1 - 4.2) + 2.8}
+                    y={labelY + 3.1}
                     fill="#000000"
-                    fontSize="2.1"
-                    fontWeight="800"
-                    fontFamily="sans-serif"
+                    fontSize="2.3"
+                    fontWeight="900"
+                    fontFamily="monospace, sans-serif"
                   >
-                    {det.label.toUpperCase()}
+                    {det.label}
                   </text>
                 </g>
               );
             })}
           </svg>
-        )}
-
-        {/* 2. Webcam Mode: Live Face & Operator Sentinel HUD */}
-        {isWebcamActive && !webcamError && (
-          <div className="webcam-hud-overlay">
-            <div
-              className={`face-target-box ${
-                isWebcamCompliant ? 'compliant' : 'violation'
-              }`}
-            >
-              <span className="corner top-l" />
-              <span className="corner top-r" />
-              <span className="corner btm-l" />
-              <span className="corner btm-r" />
-
-              <div className="target-tag">
-                <span className="target-title">WORKER #ME (OPERATOR)</span>
-                <span className="target-status">
-                  {isWebcamCompliant ? 'COMPLIANT' : 'MISSING REQUIRED PPE'}
-                </span>
-              </div>
-
-              <div className="target-ppe-indicators">
-                <span className={`indicator-pill ${simulatedHelmet ? 'ok' : 'missing'}`}>
-                  Hardhat: {simulatedHelmet ? 'Detected' : 'MISSING'}
-                </span>
-                <span className={`indicator-pill ${simulatedVest ? 'ok' : 'missing'}`}>
-                  Safety Vest: {simulatedVest ? 'Detected' : 'MISSING'}
-                </span>
-                <span className={`indicator-pill ${simulatedGoggles ? 'ok' : 'missing'}`}>
-                  Goggles: {simulatedGoggles ? 'Detected' : 'Optional'}
-                </span>
-              </div>
-            </div>
-
-            <div className="face-simulator-bar">
-              <span className="sim-title">Test Your Compliance:</span>
-              <button
-                className={`sim-toggle ${simulatedHelmet ? 'active' : ''}`}
-                onClick={() => setSimulatedHelmet(!simulatedHelmet)}
-              >
-                Helmet: {simulatedHelmet ? 'ON' : 'OFF'}
-              </button>
-              <button
-                className={`sim-toggle ${simulatedVest ? 'active' : ''}`}
-                onClick={() => setSimulatedVest(!simulatedVest)}
-              >
-                Vest: {simulatedVest ? 'ON' : 'OFF'}
-              </button>
-              <button
-                className={`sim-toggle ${simulatedGoggles ? 'active' : ''}`}
-                onClick={() => setSimulatedGoggles(!simulatedGoggles)}
-              >
-                Goggles: {simulatedGoggles ? 'ON' : 'OFF'}
-              </button>
-            </div>
-          </div>
         )}
       </div>
 
@@ -519,9 +514,10 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
           <button
             className={`clean-toggle-chip ${showPPE ? 'active' : ''}`}
             onClick={() => setShowPPE(!showPPE)}
+            title="Toggle bounding box squares on workers"
           >
             <HardHat size={13} />
-            <span>Safety Gear Boxes</span>
+            <span>Worker Equipment Squares</span>
           </button>
 
           <button
@@ -529,7 +525,7 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
             onClick={() => setShowFire(!showFire)}
           >
             <Flame size={13} />
-            <span>Fire / Smoke Hazards</span>
+            <span>Hazards</span>
           </button>
 
           <button
@@ -545,7 +541,7 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
           <button
             className="clean-ctrl-btn primary"
             onClick={handleSnapPhoto}
-            title="Take an instant audit evidence snapshot from the live camera"
+            title="Capture an instant audit snapshot from the live camera"
           >
             <Camera size={13} />
             <span>Capture Evidence</span>

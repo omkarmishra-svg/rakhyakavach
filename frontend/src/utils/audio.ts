@@ -28,6 +28,10 @@ class SoundEngine {
   }
 
   // Industrial two-tone alert chirp for PPE warning
+  public playAlert(): void {
+    this.playWarnBeep();
+  }
+
   public playWarnBeep(): void {
     const ctx = this.getContext();
     if (!ctx) return;

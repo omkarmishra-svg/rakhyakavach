@@ -2050,3 +2050,208 @@
   opacity: 0.8;
   margin-top: 2px;
 }
+
+/* ---------------- Vision Layout: 3-column Wall ---------------- */
+.vision-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr 310px;
+  gap: 12px;
+  padding: 12px;
+  height: calc(100vh - var(--navbar-height) - var(--ticker-height));
+  overflow: hidden;
+  background-color: var(--bg-app);
+}
+
+/* ---------------- Left Camera Selector Rail ---------------- */
+.camera-thumbnail-rail {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--card-radius);
+  overflow: hidden;
+  height: 100%;
+}
+
+.rail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-hairline);
+  background: var(--surface-panel-subtle);
+}
+
+.rail-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rail-icon {
+  color: var(--safety-green);
+}
+
+.rail-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+}
+
+.rail-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(0, 230, 118, 0.15);
+  color: #00e676;
+  border: 1px solid rgba(0, 230, 118, 0.35);
+  letter-spacing: 0.04em;
+}
+
+.camera-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.cam-select-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: var(--surface-panel-subtle);
+  border: 1px solid var(--border-hairline);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  color: var(--text-primary);
+  width: 100%;
+  position: relative;
+}
+
+.cam-select-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-active);
+  transform: translateY(-1px);
+}
+
+.cam-select-card.active {
+  background: linear-gradient(145deg, rgba(0, 230, 118, 0.08) 0%, rgba(16, 185, 129, 0.14) 100%);
+  border: 1.5px solid #00e676;
+  box-shadow: 0 0 14px rgba(0, 230, 118, 0.22);
+}
+
+.cam-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cam-code-tag {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 800;
+  color: #00e676;
+  letter-spacing: 0.04em;
+}
+
+.cam-select-card:not(.active) .cam-code-tag {
+  color: var(--text-dim);
+}
+
+.cam-stream-status {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.cam-stream-status.live {
+  color: #00e676;
+  animation: pulse-critical 2s infinite ease-in-out;
+}
+
+.cam-stream-status.standby {
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
+.cam-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cam-card-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.25;
+}
+
+.cam-card-zone {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.cam-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cam-type-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+.cam-action-hint {
+  font-size: 9px;
+  font-weight: 600;
+  color: #00e676;
+}
+
+.cam-select-card:not(.active) .cam-action-hint {
+  color: var(--text-dim);
+}
+
+/* ---------------- Center Hero Feed Area ---------------- */
+.hero-feed-area {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ---------------- Right Alerts Sidebar ---------------- */
+.alerts-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--card-radius);
+  overflow-y: auto;
+  height: 100%;
+  padding: 12px;
+}
+
+@media (max-width: 1200px) {
+  .vision-layout {
+    grid-template-columns: 200px 1fr 280px;
+  }
+}
+

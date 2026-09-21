@@ -266,10 +266,24 @@ def analyze_frame(req: FrameAnalysisRequest):
                 round((y2 / h) * 100, 2),
             ]
 
+            req_count = len(worker.required_ppe) if worker.required_ppe else 1
+            missing_count = len(worker.missing_ppe)
+            if missing_count == 0:
+                status = "COMPLIANT"
+                color = "#00e676"  # Green
+            elif missing_count >= req_count or len(worker.worn_ppe) == 0:
+                status = "MISSING ALL"
+                color = "#ff1744"  # Red
+            else:
+                status = "PARTIAL"
+                color = "#ffb300"  # Yellow
+
             detected_workers.append({
                 "worker_id": worker.worker_id,
                 "box": norm_box,
                 "is_compliant": worker.is_compliant,
+                "status": status,
+                "color": color,
                 "worn_ppe": list(worker.worn_ppe.keys()),
                 "missing_ppe": worker.missing_ppe,
                 "violations": worker.violations,

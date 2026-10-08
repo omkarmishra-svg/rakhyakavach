@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ShieldCheck,
@@ -18,12 +16,13 @@ import {
   Pause,
   Camera,
   Video,
-  Scan,
   Upload,
   Navigation,
   MapPin,
   AlertOctagon,
-  UserCheck
+  UserCheck,
+  Shuffle,
+  RefreshCw
 } from 'lucide-react';
 import { GateLogEntry } from '../types';
 import { soundEngine } from '../utils/audio';
@@ -78,7 +77,7 @@ const PRESET_SCENARIOS: EntrantProfile[] = [
     required_ppe: ['helmet', 'vest', 'goggles', 'gloves'],
     worn_ppe: ['helmet', 'vest'],
     missing_ppe: ['goggles', 'gloves'],
-    missing_ppe_alert: '⚠️ ACCESS DENIED: Missing mandatory equipment [Safety Goggles, Insulated Electrical Gloves] for Amit Patel (Substation Bay Ops). Turnstile Locked.',
+    missing_ppe_alert: '⚠️ ACCESS DENIED: Missing mandatory equipment [Safety Goggles, Insulated Electrical Gloves] for Amit Patel. Turnstile Locked.',
     contraband: [],
     access_status: 'ACCESS_DENIED',
     turnstile_unlocked: false,
@@ -125,6 +124,42 @@ const PRESET_SCENARIOS: EntrantProfile[] = [
     decision_message: 'ACCESS GRANTED: SCADA Control Room clearance verified. Welcome, Sunita Rao.'
   },
   {
+    emp_id: 'ELEC-1288',
+    name: 'Suresh Verma',
+    role: 'Circuit Breaker Overhaul Specialist',
+    department: 'Switchgear Maintenance & Reliability',
+    destination_department: 'Circuit Breaker Testing Yard (Zone C)',
+    is_executive: false,
+    required_ppe: ['helmet', 'vest', 'goggles', 'gloves'],
+    worn_ppe: ['helmet', 'vest', 'goggles', 'gloves'],
+    missing_ppe: [],
+    contraband: [],
+    access_status: 'ENTERED',
+    turnstile_unlocked: true,
+    guidance_route: 'Proceed through Turnstile 1 -> Walk down West Safety Aisle to Breaker Yard C.',
+    remedy_guidance: 'Equip arc-flash shield goggles and insulated gloves at Kiosk #2.',
+    active_guidance: '🗺️ AUTHORIZED DESTINATION: Walk down West Safety Aisle to Breaker Yard C.',
+    decision_message: 'ACCESS GRANTED: Certified for 66kV breaker yard overhaul. Welcome, Suresh Verma.'
+  },
+  {
+    emp_id: 'ELEC-1310',
+    name: 'Pooja Nair',
+    role: 'Substation Operations & Safety Officer',
+    department: 'Grid Safety & Incident Prevention',
+    destination_department: 'Floor Safety Coordination Center (Bay 1)',
+    is_executive: false,
+    required_ppe: ['helmet', 'vest'],
+    worn_ppe: ['helmet', 'vest'],
+    missing_ppe: [],
+    contraband: [],
+    access_status: 'ENTERED',
+    turnstile_unlocked: true,
+    guidance_route: 'Proceed through Turnstile 1 -> Follow Red Safety Pathway to Coordination Office.',
+    remedy_guidance: 'Collect high-vis vest and helmet at Gate 1 Reception.',
+    active_guidance: '🗺️ AUTHORIZED DESTINATION: Follow Red Safety Pathway to Coordination Office.',
+    decision_message: 'ACCESS GRANTED: Safety Officer clearance active. Welcome, Pooja Nair.'
+  },
+  {
     emp_id: 'ELEC-1234',
     name: 'Manoj Kumar',
     role: 'Switchyard Protection & Relay Tech',
@@ -168,6 +203,7 @@ export const SmartGatekeeperView: React.FC = () => {
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [gateLogs, setGateLogs] = useState<GateLogEntry[]>([]);
   const [scanTimestamp, setScanTimestamp] = useState<string>(new Date().toLocaleTimeString());
+  const [autoScanEnabled, setAutoScanEnabled] = useState<boolean>(false);
 
   // Video Streaming & Upload Controls
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -180,7 +216,7 @@ export const SmartGatekeeperView: React.FC = () => {
   const [streamSource, setStreamSource] = useState<'video' | 'webcam' | 'upload'>('video');
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(true);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [webcamError, setWebcamError] = useState<string | null>(null);
 
   // Fetch initial logs
@@ -202,6 +238,7 @@ export const SmartGatekeeperView: React.FC = () => {
     try {
       if (videoRef.current) {
         videoRef.current.pause();
+        setIsPlaying(false);
       }
       if (uploadedVideoRef.current) {
         uploadedVideoRef.current.pause();
@@ -216,6 +253,11 @@ export const SmartGatekeeperView: React.FC = () => {
         webcamRef.current.play().catch(() => {});
       }
       setStreamSource('webcam');
+
+      // Automatically assign a random Indian persona and scan after webcam settles
+      setTimeout(() => {
+        handleScanEntrant(true);
+      }, 700);
     } catch (err) {
       console.warn('Webcam stream unavailable:', err);
       setWebcamError('Hardware webcam access unavailable. Reverted to recorded CCTV feed.');
@@ -232,9 +274,9 @@ export const SmartGatekeeperView: React.FC = () => {
       webcamRef.current.srcObject = null;
     }
     setStreamSource('video');
+    setIsPlaying(false);
     if (videoRef.current) {
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
+      videoRef.current.pause();
     }
   }, []);
 
@@ -247,10 +289,19 @@ export const SmartGatekeeperView: React.FC = () => {
   }, []);
 
   const toggleStreamSource = () => {
-    if (streamSource === 'video') {
-      startWebcam();
-    } else {
+    if (streamSource === 'webcam') {
       stopWebcam();
+    } else {
+      startWebcam();
+    }
+  };
+
+  const switchToCctv = () => {
+    if (webcamStreamRef.current) stopWebcam();
+    setStreamSource('video');
+    setIsPlaying(false);
+    if (videoRef.current) {
+      videoRef.current.pause();
     }
   };
 
@@ -382,7 +433,7 @@ export const SmartGatekeeperView: React.FC = () => {
   };
 
   // Perform live frame capture & inference scan from video/webcam/upload
-  const handleLiveFrameScan = async () => {
+  const handleScanEntrant = async (isRandom: boolean = false) => {
     setIsScanning(true);
 
     const videoEl =
@@ -411,44 +462,70 @@ export const SmartGatekeeperView: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           image: b64,
-          emp_id_override: currentEntrant.emp_id,
+          assign_random: isRandom,
+          emp_id_override: isRandom ? undefined : currentEntrant.emp_id,
           manual_contraband: currentEntrant.contraband
         })
       });
 
       if (res.ok) {
         const scanRes = await res.json();
-        setCurrentEntrant((prev) => {
-          const updated: EntrantProfile = {
-            ...prev,
-            emp_id: scanRes.emp_id || prev.emp_id,
-            name: scanRes.name || prev.name,
-            role: scanRes.role || prev.role,
-            department: scanRes.department || prev.department,
-            destination_department: scanRes.destination_department || prev.destination_department,
-            access_status: scanRes.access_status || prev.access_status,
-            decision_message: scanRes.decision_message || prev.decision_message,
-            turnstile_unlocked: scanRes.turnstile_unlocked ?? prev.turnstile_unlocked,
-            worn_ppe: scanRes.worn_ppe || prev.worn_ppe,
-            missing_ppe: scanRes.missing_ppe || prev.missing_ppe,
-            missing_ppe_alert: scanRes.missing_ppe_alert || prev.missing_ppe_alert,
-            contraband: scanRes.contraband_detected || prev.contraband,
-            contraband_alert: scanRes.contraband_alert || prev.contraband_alert,
-            guidance_route: scanRes.guidance_route || prev.guidance_route,
-            remedy_guidance: scanRes.remedy_guidance || prev.remedy_guidance,
-            active_guidance: scanRes.active_guidance || prev.active_guidance
-          };
+        const updated: EntrantProfile = {
+          emp_id: scanRes.emp_id || currentEntrant.emp_id,
+          name: scanRes.name || currentEntrant.name,
+          role: scanRes.role || currentEntrant.role,
+          department: scanRes.department || currentEntrant.department,
+          destination_department: scanRes.destination_department || currentEntrant.destination_department,
+          is_executive: scanRes.is_executive ?? currentEntrant.is_executive,
+          required_ppe: scanRes.required_ppe || currentEntrant.required_ppe,
+          worn_ppe: scanRes.worn_ppe || [],
+          missing_ppe: scanRes.missing_ppe || [],
+          missing_ppe_alert: scanRes.missing_ppe_alert,
+          contraband: scanRes.contraband_detected || currentEntrant.contraband,
+          contraband_alert: scanRes.contraband_alert,
+          access_status: scanRes.access_status || 'ACCESS_DENIED',
+          turnstile_unlocked: scanRes.turnstile_unlocked ?? false,
+          guidance_route: scanRes.guidance_route || currentEntrant.guidance_route,
+          remedy_guidance: scanRes.remedy_guidance || currentEntrant.remedy_guidance,
+          active_guidance: scanRes.active_guidance || currentEntrant.active_guidance,
+          decision_message: scanRes.decision_message || 'Scan completed'
+        };
 
-          if (updated.access_status === 'ENTERED') {
-            soundEngine.playChime();
-          } else if (updated.access_status === 'SECURITY_INTERCEPT') {
-            soundEngine.playCriticalSiren();
-          } else {
-            soundEngine.playWarnBeep();
-          }
+        setCurrentEntrant(updated);
 
-          return updated;
-        });
+        if (updated.access_status === 'ENTERED') {
+          soundEngine.playChime();
+        } else if (updated.access_status === 'SECURITY_INTERCEPT') {
+          soundEngine.playCriticalSiren();
+        } else {
+          soundEngine.playWarnBeep();
+        }
+
+        const newLog: GateLogEntry = {
+          timestamp: new Date().toLocaleTimeString(),
+          emp_id: updated.emp_id,
+          name: updated.name,
+          role: updated.role,
+          department: updated.department,
+          destination_department: updated.destination_department,
+          is_executive: updated.is_executive,
+          access_status: updated.access_status,
+          turnstile_unlocked: updated.turnstile_unlocked,
+          required_ppe: updated.required_ppe,
+          worn_ppe: updated.worn_ppe,
+          missing_ppe: updated.missing_ppe,
+          missing_ppe_alert: updated.missing_ppe_alert,
+          contraband_detected: updated.contraband,
+          contraband_alert: updated.contraband_alert,
+          decision_message: updated.decision_message,
+          guidance_route: updated.guidance_route,
+          remedy_guidance: updated.remedy_guidance,
+          active_guidance: updated.active_guidance,
+          severity: scanRes.severity || 'Medium',
+          gate_id: 'GATE-01-AIRLOCK',
+          shield_admin_block: true
+        };
+        setGateLogs((prev) => [newLog, ...prev.slice(0, 19)]);
       }
     } catch (e) {
       console.warn('Live scan error:', e);
@@ -458,6 +535,45 @@ export const SmartGatekeeperView: React.FC = () => {
       }, 400);
     }
   };
+
+  // Quick Simulation Override: Toggle individual gear for live presentations
+  const handleToggleGear = (gearKey: string) => {
+    const isWorn = currentEntrant.worn_ppe.includes(gearKey);
+    const newWorn = isWorn
+      ? currentEntrant.worn_ppe.filter((g) => g !== gearKey)
+      : [...currentEntrant.worn_ppe, gearKey];
+
+    handleSelectScenario({
+      ...currentEntrant,
+      worn_ppe: newWorn
+    });
+  };
+
+  // Quick Simulation Override: Toggle contraband item
+  const handleToggleContraband = (itemKey: string) => {
+    const hasItem = currentEntrant.contraband.includes(itemKey);
+    const newContraband = hasItem
+      ? currentEntrant.contraband.filter((c) => c !== itemKey)
+      : [...currentEntrant.contraband, itemKey];
+
+    handleSelectScenario({
+      ...currentEntrant,
+      contraband: newContraband
+    });
+  };
+
+  // Automatic periodic scan when in webcam mode and autoScan is enabled
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (streamSource === 'webcam' && autoScanEnabled) {
+      interval = setInterval(() => {
+        handleScanEntrant(false);
+      }, 3500);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [streamSource, autoScanEnabled]);
 
   const isEntered = currentEntrant.access_status === 'ENTERED';
   const isBlocked = currentEntrant.access_status === 'ACCESS_DENIED';
@@ -548,7 +664,7 @@ export const SmartGatekeeperView: React.FC = () => {
               </span>
             </div>
             <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#9ca3af' }}>
-              NFPA 70E / OSHA Electrical PPE Verification, Contraband Intercept & Department Navigation Guidance
+              Dynamic Personnel Identification (Indian Profiles), Edge PPE Verification & Department Wayfinding Directives
             </p>
           </div>
         </div>
@@ -637,14 +753,7 @@ export const SmartGatekeeperView: React.FC = () => {
 
                 {/* CCTV Toggle */}
                 <button
-                  onClick={() => {
-                    if (webcamStreamRef.current) stopWebcam();
-                    setStreamSource('video');
-                    if (videoRef.current) {
-                      videoRef.current.play().catch(() => {});
-                      setIsPlaying(true);
-                    }
-                  }}
+                  onClick={switchToCctv}
                   style={{
                     backgroundColor: streamSource === 'video' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.08)',
                     border: `1px solid ${streamSource === 'video' ? '#10b981' : 'rgba(255, 255, 255, 0.15)'}`,
@@ -661,7 +770,7 @@ export const SmartGatekeeperView: React.FC = () => {
                   title="Switch to Recorded Gate CCTV feed"
                 >
                   <Video size={12} />
-                  <span>CCTV</span>
+                  <span>FETCH CCTV</span>
                 </button>
 
                 {/* Webcam Toggle */}
@@ -680,10 +789,10 @@ export const SmartGatekeeperView: React.FC = () => {
                     gap: '4px',
                     cursor: 'pointer'
                   }}
-                  title="Switch between recorded Gate CCTV and Live Laptop Webcam"
+                  title="Switch to live hardware laptop webcam"
                 >
                   <Camera size={12} />
-                  <span>{streamSource === 'webcam' ? 'STOP WEBCAM' : 'WEBCAM'}</span>
+                  <span>{streamSource === 'webcam' ? 'STOP WEBCAM' : 'USE WEBCAM'}</span>
                 </button>
 
                 {/* Custom Video Upload Button */}
@@ -745,7 +854,6 @@ export const SmartGatekeeperView: React.FC = () => {
               <video
                 ref={videoRef}
                 src="/data/cctv_bay1.mp4"
-                autoPlay
                 loop
                 muted
                 playsInline
@@ -918,7 +1026,7 @@ export const SmartGatekeeperView: React.FC = () => {
                   pointerEvents: 'none'
                 }}
               >
-                LIVE AIRLOCK // {scanTimestamp} // FPS: 30.0 // AI LATENCY: 14ms
+                AIRLOCK SENTRY // {scanTimestamp} // FPS: 30.0 // AI LATENCY: 14ms
               </div>
             </div>
 
@@ -994,7 +1102,7 @@ export const SmartGatekeeperView: React.FC = () => {
             </div>
           </div>
 
-          {/* Entrant Profile Badge Card + Live Scan Trigger */}
+          {/* Entrant Profile Badge Card with Random Worker Assignment & Scan Controls */}
           <div
             style={{
               backgroundColor: '#111827',
@@ -1052,29 +1160,81 @@ export const SmartGatekeeperView: React.FC = () => {
               </div>
             </div>
 
-            {/* AI Vision Auto-Detect Button */}
-            <button
-              onClick={handleLiveFrameScan}
-              disabled={isScanning}
-              style={{
-                padding: '9px 16px',
-                borderRadius: '8px',
-                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-                border: '1px solid rgba(59, 130, 246, 0.6)',
-                color: '#fff',
-                fontSize: '12px',
-                fontWeight: 800,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)'
-              }}
-              title="Capture current video frame and run AI person detection & PPE compliance"
-            >
-              <Scan size={15} />
-              <span>{isScanning ? 'AI ANALYZING...' : 'AI VISION SCAN'}</span>
-            </button>
+            {/* Random Worker Assign & Live Scan Buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <button
+                onClick={() => handleScanEntrant(true)}
+                disabled={isScanning}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: '7px',
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  border: '1px solid rgba(16, 185, 129, 0.6)',
+                  color: '#fff',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  boxShadow: '0 0 12px rgba(16, 185, 129, 0.3)'
+                }}
+                title="Assign me a random Indian name and designation, and inspect camera frame"
+              >
+                <Shuffle size={13} />
+                <span>{isScanning ? 'ASSIGNING...' : 'ASSIGN RANDOM WORKER & SCAN'}</span>
+              </button>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <button
+                    onClick={() => handleScanEntrant(false)}
+                    disabled={isScanning}
+                    style={{
+                      padding: '7px 10px',
+                      borderRadius: '7px',
+                      background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                      border: '1px solid rgba(59, 130, 246, 0.6)',
+                      color: '#fff',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                      cursor: 'pointer',
+                      boxShadow: '0 0 12px rgba(59, 130, 246, 0.3)'
+                    }}
+                    title="Re-scan current entrant with live video/webcam frame"
+                  >
+                    <RefreshCw size={12} />
+                    <span>{isScanning ? 'SCANNING...' : 'RE-SCAN'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAutoScanEnabled((prev) => !prev)}
+                    style={{
+                      padding: '7px 10px',
+                      borderRadius: '7px',
+                      background: autoScanEnabled
+                        ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)'
+                        : 'rgba(255, 255, 255, 0.08)',
+                      border: `1px solid ${autoScanEnabled ? '#a78bfa' : 'rgba(255, 255, 255, 0.15)'}`,
+                      color: autoScanEnabled ? '#fff' : '#d1d5db',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                      cursor: 'pointer'
+                    }}
+                    title="Toggle continuous auto-scan (every 3.5s) for hands-free entry kiosk operation"
+                  >
+                    <Radio size={12} color={autoScanEnabled ? '#34d399' : '#9ca3af'} />
+                    <span>AUTO: {autoScanEnabled ? 'ON' : 'OFF'}</span>
+                  </button>
+                </div>
+              </div>
           </div>
 
           {/* Department Wayfinding & Navigation Directive Card */}
@@ -1119,7 +1279,7 @@ export const SmartGatekeeperView: React.FC = () => {
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 700, color: '#f3f4f6' }}>
                   {isEntered
-                    ? `Destination: ${currentEntrant.destination_department || currentEntrant.department}`
+                    ? `Authorized Bay: ${currentEntrant.destination_department || currentEntrant.department}`
                     : isBlocked
                     ? 'Remedy Point: PPE Safety Dispenser Kiosk #2 (Opposite Turnstile 1)'
                     : 'Gate 1 Quarantine Zone // Security Inspection Bay'}
@@ -1167,7 +1327,7 @@ export const SmartGatekeeperView: React.FC = () => {
             </div>
           )}
 
-          {/* Electrical Industry Mandatory PPE Checklist */}
+          {/* Mandatory Electrical PPE Checklist + Simulation Quick-Toggles */}
           <div
             style={{
               backgroundColor: '#111827',
@@ -1176,7 +1336,7 @@ export const SmartGatekeeperView: React.FC = () => {
               padding: '16px'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ShieldCheck size={18} color="#3b82f6" />
                 <span style={{ fontSize: '13px', fontWeight: 800, color: '#f3f4f6', letterSpacing: '0.04em' }}>
@@ -1200,8 +1360,9 @@ export const SmartGatekeeperView: React.FC = () => {
                 const isMissing = isRequired && !isWorn;
 
                 return (
-                  <div
+                  <button
                     key={gear.key}
+                    onClick={() => handleToggleGear(gear.key)}
                     style={{
                       padding: '10px 12px',
                       borderRadius: '8px',
@@ -1219,8 +1380,11 @@ export const SmartGatekeeperView: React.FC = () => {
                       }`,
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between'
+                      justifyContent: 'space-between',
+                      textAlign: 'left',
+                      cursor: 'pointer'
                     }}
+                    title="Click to toggle this piece of equipment on the entrant"
                   >
                     <div>
                       <div
@@ -1232,7 +1396,9 @@ export const SmartGatekeeperView: React.FC = () => {
                       >
                         {gear.label}
                       </div>
-                      <div style={{ fontSize: '10px', color: '#6b7280' }}>{gear.desc}</div>
+                      <div style={{ fontSize: '10px', color: '#6b7280' }}>
+                        {gear.desc} · <span style={{ textDecoration: 'underline' }}>{isWorn ? 'Worn (Click to Remove)' : 'Missing (Click to Equip)'}</span>
+                      </div>
                     </div>
                     {isMissing ? (
                       <XCircle size={18} color="#ef4444" />
@@ -1241,7 +1407,7 @@ export const SmartGatekeeperView: React.FC = () => {
                     ) : (
                       <span style={{ fontSize: '10px', color: '#6b7280' }}>OPTIONAL</span>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -1315,8 +1481,9 @@ export const SmartGatekeeperView: React.FC = () => {
                   detected: currentEntrant.contraband.includes('cigarettes')
                 }
               ].map((item) => (
-                <div
+                <button
                   key={item.key}
+                  onClick={() => handleToggleContraband(item.key)}
                   style={{
                     padding: '10px 12px',
                     borderRadius: '8px',
@@ -1324,14 +1491,19 @@ export const SmartGatekeeperView: React.FC = () => {
                     border: `1px solid ${item.detected ? '#ef4444' : 'rgba(16, 185, 129, 0.3)'}`,
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between'
+                    justifyContent: 'space-between',
+                    textAlign: 'left',
+                    cursor: 'pointer'
                   }}
+                  title="Click to toggle carrying this prohibited item"
                 >
                   <div>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: item.detected ? '#f87171' : '#f3f4f6' }}>
                       {item.name}
                     </div>
-                    <div style={{ fontSize: '10px', color: '#9ca3af' }}>{item.hazard}</div>
+                    <div style={{ fontSize: '10px', color: '#9ca3af' }}>
+                      {item.hazard} · <span style={{ textDecoration: 'underline' }}>{item.detected ? 'Remove' : 'Simulate'}</span>
+                    </div>
                   </div>
                   {item.detected ? (
                     <span
@@ -1349,7 +1521,7 @@ export const SmartGatekeeperView: React.FC = () => {
                   ) : (
                     <CheckCircle size={16} color="#10b981" />
                   )}
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -1363,21 +1535,44 @@ export const SmartGatekeeperView: React.FC = () => {
               padding: '14px 16px'
             }}
           >
-            <div
-              style={{
-                fontSize: '11px',
-                fontWeight: 800,
-                color: '#9ca3af',
-                letterSpacing: '0.05em',
-                marginBottom: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              <UserCheck size={14} color="#3b82f6" />
-              <span>INDIAN DEMO PERSONNEL PROFILES (SELECT TO TEST AIRLOCK SENTINEL)</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  color: '#9ca3af',
+                  letterSpacing: '0.05em',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <UserCheck size={14} color="#3b82f6" />
+                <span>INDIAN DEMO PERSONNEL PROFILES</span>
+              </div>
+
+              {/* Random Profile Quick Picker */}
+              <button
+                onClick={() => handleScanEntrant(true)}
+                style={{
+                  backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                  border: '1px solid rgba(59, 130, 246, 0.4)',
+                  borderRadius: '5px',
+                  color: '#93c5fd',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  padding: '3px 8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                <Shuffle size={11} />
+                <span>RANDOMIZE</span>
+              </button>
             </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               {PRESET_SCENARIOS.map((scen, idx) => (
                 <button

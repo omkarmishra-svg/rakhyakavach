@@ -851,6 +851,7 @@ class GateScanRequest(BaseModel):
     detected_ppe: Optional[List[str]] = []
     track_id: Optional[int] = 1
     emp_id_override: Optional[str] = None
+    assign_random: Optional[bool] = False
     manual_contraband: Optional[List[str]] = []
 
 
@@ -868,6 +869,7 @@ def scan_gate_entry(req: GateScanRequest):
             detected_ppe=req.detected_ppe or [],
             track_id=req.track_id or 1,
             emp_id_override=req.emp_id_override,
+            assign_random=bool(req.assign_random),
             manual_contraband_check=req.manual_contraband or []
         )
         return {"ok": True, **res}
@@ -880,7 +882,7 @@ def scan_gate_live(req: GateScanRequest):
     """
     Live AI Airlock Gate Scanner:
     1. Detects person and PPE on the incoming frame using YOLOv8 pipeline.
-    2. Identifies/assigns an Indian demo profile (e.g. Rajesh Sharma, Amit Patel, Sunita Rao).
+    2. Identifies/assigns an Indian demo profile (or assigns random Indian worker).
     3. Scans for missing required equipment and issues warning alerts.
     4. Scans for mischievous items (knife, cigarettes, etc.) and generates security alerts with name and department.
     5. Decides turnstile entry (ENTERED vs ACCESS DENIED).
@@ -929,9 +931,21 @@ def scan_gate_live(req: GateScanRequest):
             detected_ppe=detected_ppe,
             track_id=track_id,
             emp_id_override=emp_id,
+            assign_random=bool(req.assign_random),
             manual_contraband_check=req.manual_contraband or []
         )
         return {"ok": True, **res}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/personnel/random")
+def get_random_personnel(exclude_emp_id: Optional[str] = None):
+    """Retrieve a randomly chosen Indian worker profile from the plant registry."""
+    try:
+        from src.personnel_registry import personnel_registry
+        profile = personnel_registry.get_random_profile(exclude_emp_id=exclude_emp_id)
+        return {"ok": True, "profile": profile.to_dict()}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

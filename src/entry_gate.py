@@ -93,6 +93,7 @@ class SmartEntryGatekeeper:
         detected_ppe: Optional[List[str]] = None,
         track_id: Optional[int] = 1,
         emp_id_override: Optional[str] = None,
+        assign_random: bool = False,
         manual_contraband_check: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
@@ -104,12 +105,15 @@ class SmartEntryGatekeeper:
         - Enforces Administrative Privacy Shield.
         """
         # Resolve personnel identity
-        override_profile = self.registry.get_profile_by_emp_id(emp_id_override) if emp_id_override else None
-        profile: PersonnelProfile = (
-            override_profile
-            if override_profile is not None
-            else self.registry.resolve_profile_by_track_id(track_id)
-        )
+        if assign_random:
+            profile: PersonnelProfile = self.registry.get_random_profile(exclude_emp_id=emp_id_override)
+        else:
+            override_profile = self.registry.get_profile_by_emp_id(emp_id_override) if emp_id_override else None
+            profile: PersonnelProfile = (
+                override_profile
+                if override_profile is not None
+                else self.registry.resolve_profile_by_track_id(track_id)
+            )
 
         emp_id = profile.emp_id
         name = profile.name

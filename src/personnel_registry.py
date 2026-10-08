@@ -6,6 +6,7 @@ Includes Department Wayfinding Navigation and Safety Remedy Directives.
 """
 
 from typing import Dict, Any, List, Optional
+import random
 
 
 class PersonnelProfile:
@@ -139,6 +140,84 @@ class PersonnelRegistry:
             guidance_route="Proceed through Turnstile 1 -> Walk through Corridor 3 to Relay Testing Lab.",
             remedy_guidance="Collect arc-rated goggles and insulated gloves at Dispenser Kiosk #2."
         ),
+        "ELEC-1288": PersonnelProfile(
+            emp_id="ELEC-1288",
+            name="Suresh Verma",
+            role="Circuit Breaker Overhaul Specialist",
+            department="Switchgear Maintenance & Reliability",
+            is_executive=False,
+            required_ppe=["helmet", "vest", "goggles", "gloves"],
+            access_clearance="Level 3 - Live Busbar Certified",
+            avatar_color="#38bdf8",
+            destination_department="Circuit Breaker Testing Yard (Zone C)",
+            guidance_route="Proceed through Turnstile 1 -> Walk down West Safety Aisle to Breaker Yard C.",
+            remedy_guidance="Equip arc-flash shield goggles and insulated gloves at Kiosk #2."
+        ),
+        "ELEC-1310": PersonnelProfile(
+            emp_id="ELEC-1310",
+            name="Pooja Nair",
+            role="Substation Operations & Safety Officer",
+            department="Grid Safety & Incident Prevention",
+            is_executive=False,
+            required_ppe=["helmet", "vest"],
+            access_clearance="Level 2 - Operational Safety Officer",
+            avatar_color="#f43f5e",
+            destination_department="Floor Safety Coordination Center (Bay 1)",
+            guidance_route="Proceed through Turnstile 1 -> Follow Red Safety Pathway to Coordination Office.",
+            remedy_guidance="Collect high-vis vest and helmet at Gate 1 Reception."
+        ),
+        "ELEC-1342": PersonnelProfile(
+            emp_id="ELEC-1342",
+            name="Deepak Joshi",
+            role="Overhead Transmission Line Tech",
+            department="Transmission Tower Lines",
+            is_executive=False,
+            required_ppe=["helmet", "vest", "goggles", "gloves"],
+            access_clearance="Level 3 - Tower Rigging & Climbing Certified",
+            avatar_color="#10b981",
+            destination_department="Tower Rigging Equipment Bay (Sector 4)",
+            guidance_route="Proceed through Turnstile 1 -> Follow Perimeter Road 200m to Sector 4 Rigging Staging Area.",
+            remedy_guidance="Collect climbing dielectric gloves and helmet at Kiosk #2."
+        ),
+        "ELEC-1375": PersonnelProfile(
+            emp_id="ELEC-1375",
+            name="Ananya Sen",
+            role="Transformer Oil Diagnostics Chemist",
+            department="Substation Chemical & Dielectric Lab",
+            is_executive=False,
+            required_ppe=["helmet", "vest", "goggles", "gloves"],
+            access_clearance="Level 2 - Chemical Diagnostics Lab Cleared",
+            avatar_color="#a855f7",
+            destination_department="Dielectric Oil Analysis Laboratory",
+            guidance_route="Proceed through Turnstile 1 -> Turn Left into Laboratory Annex (Room L-02).",
+            remedy_guidance="Equip chemical dielectric goggles and gloves at Dispenser Kiosk #2."
+        ),
+        "ELEC-1401": PersonnelProfile(
+            emp_id="ELEC-1401",
+            name="Rahul Deshmukh",
+            role="Medium-Voltage Distribution Cable Tech",
+            department="Distribution Network Operations",
+            is_executive=False,
+            required_ppe=["helmet", "vest", "goggles", "gloves"],
+            access_clearance="Level 2 - Distribution Bay",
+            avatar_color="#f97316",
+            destination_department="Medium-Voltage Feeders Vault (Bay 2)",
+            guidance_route="Proceed through Turnstile 1 -> Follow Orange Guide Markings to Bay 2 Vault.",
+            remedy_guidance="Collect gloves and goggles at Kiosk #2 before entry."
+        ),
+        "ELEC-1430": PersonnelProfile(
+            emp_id="ELEC-1430",
+            name="Sanjay Gupta",
+            role="Busbar Protection & Metering Tech",
+            department="Protection & Control Bay",
+            is_executive=False,
+            required_ppe=["helmet", "vest", "goggles", "gloves"],
+            access_clearance="Level 3 - Live Busbar Certified",
+            avatar_color="#0ea5e9",
+            destination_department="Busbar Marshalling Kiosk Enclosure",
+            guidance_route="Proceed through Turnstile 1 -> Proceed straight 80m to Busbar Enclosure.",
+            remedy_guidance="Collect dielectric gear at Kiosk #2."
+        ),
         # Executive Leadership & Plant Directors
         "EXEC-0012": PersonnelProfile(
             emp_id="EXEC-0012",
@@ -178,6 +257,8 @@ class PersonnelRegistry:
         6: "EXEC-0045",
         7: "ELEC-1205",
         8: "ELEC-1234",
+        9: "ELEC-1288",
+        10: "ELEC-1310",
         101: "ELEC-1041",
         102: "ELEC-1082",
         103: "EXEC-0012"
@@ -199,6 +280,20 @@ class PersonnelRegistry:
         keys = list(self.registry.keys())
         idx = (abs(track_id or 1) - 1) % len(keys)
         return self.registry[keys[idx]]
+
+    def get_random_profile(self, exclude_emp_id: Optional[str] = None) -> PersonnelProfile:
+        """Randomly select an Indian worker profile from the plant registry."""
+        worker_keys = [k for k in self.registry.keys() if not self.registry[k].is_executive]
+        if not worker_keys:
+            worker_keys = list(self.registry.keys())
+
+        if exclude_emp_id and len(worker_keys) > 1 and exclude_emp_id in worker_keys:
+            candidates = [k for k in worker_keys if k != exclude_emp_id]
+        else:
+            candidates = worker_keys
+
+        chosen_key = random.choice(candidates)
+        return self.registry[chosen_key]
 
     def list_all_profiles(self) -> List[Dict[str, Any]]:
         return [p.to_dict() for p in self.registry.values()]

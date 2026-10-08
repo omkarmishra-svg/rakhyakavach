@@ -17,6 +17,7 @@ import argparse
 import os
 import sys
 import shutil
+# pyrefly: ignore [untyped-import]
 import yaml
 
 # Add project root to path

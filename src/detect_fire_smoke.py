@@ -26,7 +26,7 @@ class HazardDetectionResult:
         confidence: float,
         severity: str = "Medium",
     ):
-        self.box = [int(coord) for coord in box]  # [x1, y1, x2, y2]
+        self.box = list(box)  # [x1, y1, x2, y2]
         self.hazard_type = hazard_type.lower().strip()  # 'fire' or 'smoke'
         self.confidence = float(confidence)
         self.severity = severity  # 'Low', 'Medium', 'High', 'Critical'
@@ -84,17 +84,25 @@ class FireSmokeDetector:
             print("[FireSmokeDetector] Warning: Ultralytics not available.")
             return
 
-        if os.path.exists(self.model_path):
+        # Resolve path relative to project root if needed
+        resolved_path = self.model_path
+        if not os.path.isabs(resolved_path):
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            candidate = os.path.join(project_root, self.model_path)
+            if os.path.exists(candidate):
+                resolved_path = candidate
+
+        if os.path.exists(resolved_path):
             try:
-                print(f"[FireSmokeDetector] Loading custom fire/smoke model from: {self.model_path}")
-                self.model = YOLO(self.model_path)
+                print(f"[FireSmokeDetector] Loading custom fire/smoke model from: {resolved_path}")
+                self.model = YOLO(resolved_path)
                 self.is_custom_model = True
                 return
             except Exception as e:
-                print(f"[FireSmokeDetector] Error loading {self.model_path}: {e}")
+                print(f"[FireSmokeDetector] Error loading {resolved_path}: {e}")
 
-        # When custom weights are pending, load yolov8n or rely on visual thermal/color heuristic fallback
-        print("[FireSmokeDetector] Custom weights not found at models/fire_smoke_best.pt. Using color-motion fire detection baseline.")
+        # When custom weights are pending, fall back to visual thermal/color heuristic
+        print(f"[FireSmokeDetector] Custom weights not found at {resolved_path}. Using color-motion fire detection baseline.")
         self.is_custom_model = False
 
     def detect(self, frame: np.ndarray) -> List[HazardDetectionResult]:
@@ -128,6 +136,21 @@ class FireSmokeDetector:
                         else:
                             continue
 
+                        # Corner case validation: steam vs smoke & reflection vs fire
+                        cx1 = max(0, coords[0])
+                        cy1 = max(0, coords[1])
+                        cx2 = min(w_frame, coords[2])
+                        cy2 = min(h_frame, coords[3])
+                        crop = frame[cy1:cy2, cx1:cx2]
+
+                        if htype == "smoke" and (self._is_benign_steam(crop) or self._is_airborne_dust(crop)):
+                            # Suppress false alarms from benign boiler/pipe steam vents or ambient dust haze
+                            continue
+
+                        if htype == "fire" and not self._has_flame_chromaticity(crop) and conf < 0.65:
+                            # Suppress false alarms from ambient yellow workwear or glare
+                            continue
+
                         box_area = max(0, coords[2] - coords[0]) * max(0, coords[3] - coords[1])
                         area_pct = box_area / frame_area
 
@@ -140,6 +163,62 @@ class FireSmokeDetector:
             results = self._detect_flame_heuristic(frame)
 
         return results
+
+    @staticmethod
+    def _is_benign_steam(crop: np.ndarray) -> bool:
+        """
+        Validate whether candidate smoke is actually benign water vapor / steam.
+        Steam features: High luminance (V > 175), near-zero saturation (S < 32),
+        and absence of dark soot/carbon particles (less than 4% pixels with V < 85).
+        """
+        if crop is None or crop.size < 40:
+            return False
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        s_channel = hsv[:, :, 1]
+        v_channel = hsv[:, :, 2]
+        mean_s = float(np.mean(s_channel))
+        mean_v = float(np.mean(v_channel))
+        dark_soot_ratio = float(np.sum(v_channel < 85)) / float(max(1, v_channel.size))
+
+        # Pure steam is bright, desaturated, and devoid of black carbon particles
+        return (mean_v > 175 and mean_s < 32 and dark_soot_ratio < 0.04)
+
+    @staticmethod
+    def _is_airborne_dust(crop: np.ndarray) -> bool:
+        """
+        Validate whether candidate smoke is ambient industrial dust / sawdust / cement haze.
+        Dust characteristics:
+        - Uniform diffuse texture with low edge gradient (no sharp plume boundaries).
+        - Uniform luminance without dark soot cores or buoyant flame flickering.
+        """
+        if crop is None or crop.size < 60:
+            return False
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
+        gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
+        mag = cv2.magnitude(gx, gy)
+        edge_energy = float(np.mean(mag))
+
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        mean_s = float(np.mean(hsv[:, :, 1]))
+        mean_v = float(np.mean(hsv[:, :, 2]))
+
+        # Diffuse dust haze has low edge energy and uniform muted saturation without thermal core
+        return (edge_energy < 12.0 and mean_s < 42 and 75 < mean_v < 175)
+
+    @staticmethod
+    def _has_flame_chromaticity(crop: np.ndarray) -> bool:
+        """
+        Verify candidate fire contains active flame chromaticity (H in 0-22 or 165-180, S > 100, V > 160)
+        rather than neon clothing or static yellow equipment.
+        """
+        if crop is None or crop.size < 40:
+            return True
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        flame_mask1 = cv2.inRange(hsv, np.array([0, 100, 160]), np.array([22, 255, 255]))
+        flame_mask2 = cv2.inRange(hsv, np.array([165, 100, 160]), np.array([180, 255, 255]))
+        flame_ratio = float(np.sum((flame_mask1 > 0) | (flame_mask2 > 0))) / float(max(1, flame_mask1.size))
+        return flame_ratio > 0.035
 
     def _detect_flame_heuristic(self, frame: np.ndarray) -> List[HazardDetectionResult]:
         """

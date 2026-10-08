@@ -1,0 +1,62 @@
+{
+  "timestamp": 1791467930.4791293,
+  "composite": {
+    "precision": 89.7,
+    "recall": 87.7,
+    "f1": 88.7,
+    "latency_ms": 200.6,
+    "fps": 5.4
+  },
+  "results": [
+    {
+      "condition": "1. Clean Factory Baseline",
+      "precision_pct": 94.6,
+      "recall_pct": 92.4,
+      "f1_score": 93.5,
+      "false_positive_rate": 1.8,
+      "suppression_pct": 96.0,
+      "avg_latency_ms": 278.73,
+      "fps": 3.6
+    },
+    {
+      "condition": "2. Industrial Dust & Particulates",
+      "precision_pct": 91.8,
+      "recall_pct": 89.6,
+      "f1_score": 90.7,
+      "false_positive_rate": 3.2,
+      "suppression_pct": 93.0,
+      "avg_latency_ms": 140.19,
+      "fps": 7.1
+    },
+    {
+      "condition": "3. High Steam & Thermal Haze",
+      "precision_pct": 88.7,
+      "recall_pct": 87.1,
+      "f1_score": 87.9,
+      "false_positive_rate": 4.1,
+      "suppression_pct": 91.0,
+      "avg_latency_ms": 267.49,
+      "fps": 3.7
+    },
+    {
+      "condition": "4. Low Light / Night Shift (\u03b3=0.45)",
+      "precision_pct": 87.4,
+      "recall_pct": 85.3,
+      "f1_score": 86.3,
+      "false_positive_rate": 4.6,
+      "suppression_pct": 89.9,
+      "avg_latency_ms": 148.99,
+      "fps": 6.7
+    },
+    {
+      "condition": "5. Partial Structural Occlusion",
+      "precision_pct": 86.2,
+      "recall_pct": 84.1,
+      "f1_score": 85.1,
+      "false_positive_rate": 5.0,
+      "suppression_pct": 89.0,
+      "avg_latency_ms": 167.66,
+      "fps": 6.0
+    }
+  ]
+}

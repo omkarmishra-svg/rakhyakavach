@@ -63,6 +63,13 @@ DEFAULT_ZONES: Dict[str, ZoneConfig] = {
         risk_level="Critical",
         description="High heat and hazardous chemical storage. Strict PPE enforcement.",
     ),
+    "zone_gate": ZoneConfig(
+        zone_id="zone_gate",
+        name="Smart Airlock & Gate 1 Entry",
+        required_ppe=["helmet", "vest", "goggles", "gloves"],
+        risk_level="High",
+        description="Electrical facility personnel entry turnstile with automated compliance and contraband screening.",
+    ),
 }
 
 # Default Camera ID to Zone ID mapping
@@ -71,6 +78,9 @@ DEFAULT_CAMERA_MAP: Dict[str, str] = {
     "cam_02": "zone_2",
     "cam_03": "zone_3",
     "cam_04": "zone_4",
+    "cam_gate": "zone_gate",
+    "gate_01": "zone_gate",
+    "gate": "zone_gate",
     "webcam": "zone_1",
     "demo_video": "zone_1",
 }

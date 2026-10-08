@@ -6,23 +6,31 @@ import {
   BarChart2,
   Volume2,
   VolumeX,
-  Maximize2
+  Maximize2,
+  Award,
+  Megaphone,
+  Layers,
+  UserCheck
 } from 'lucide-react';
 import { PlantTelemetry } from '../types';
 import { soundEngine } from '../utils/audio';
 
-export type NavTab = 'vision' | 'incidents' | 'analytics';
+export type NavTab = 'vision' | 'gatekeeper' | 'incidents' | 'analytics';
 
 interface NavBarProps {
   currentTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
   telemetry: PlantTelemetry;
+  onOpenOshaModal?: () => void;
+  onOpenMultiLevelLLM?: () => void;
 }
 
 export const NavBar: React.FC<NavBarProps> = ({
   currentTab,
   onSelectTab,
-  telemetry
+  telemetry,
+  onOpenOshaModal,
+  onOpenMultiLevelLLM
 }) => {
   const [isMuted, setIsMuted] = React.useState<boolean>(false);
   const [timeStr, setTimeStr] = React.useState<string>('');
@@ -85,6 +93,14 @@ export const NavBar: React.FC<NavBarProps> = ({
         </button>
 
         <button
+          className={`nav-tab-btn ${currentTab === 'gatekeeper' ? 'active' : ''}`}
+          onClick={() => onSelectTab('gatekeeper')}
+        >
+          <UserCheck size={16} />
+          <span>Smart Airlock Gate</span>
+        </button>
+
+        <button
           className={`nav-tab-btn ${currentTab === 'incidents' ? 'active' : ''}`}
           onClick={() => onSelectTab('incidents')}
         >
@@ -106,6 +122,77 @@ export const NavBar: React.FC<NavBarProps> = ({
 
       {/* Right Quick Actions & Metrics */}
       <div className="navbar-actions">
+        {/* 1-Click Official OSHA Certificate */}
+        {onOpenOshaModal && (
+          <button
+            className="clean-ctrl-btn primary"
+            onClick={onOpenOshaModal}
+            title="Generate Official ISO 45001 / OSHA 1910 Plant Audit Certificate"
+            style={{
+              padding: '6px 14px',
+              fontSize: '12px',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'linear-gradient(135deg, rgba(0, 230, 118, 0.2), rgba(0, 242, 254, 0.15))',
+              borderColor: 'rgba(0, 230, 118, 0.4)',
+              color: '#00e676',
+              boxShadow: '0 0 12px rgba(0, 230, 118, 0.15)'
+            }}
+          >
+            <Award size={14} />
+            <span>OSHA Certificate</span>
+          </button>
+        )}
+
+        {/* Multi-Level AI Safety Intelligence Pipeline */}
+        {onOpenMultiLevelLLM && (
+          <button
+            className="clean-ctrl-btn"
+            onClick={onOpenMultiLevelLLM}
+            title="Open Multi-Level Safety Intelligence Architecture & Interactive Reasoner"
+            style={{
+              padding: '6px 14px',
+              fontSize: '12px',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.18), rgba(124, 58, 237, 0.15))',
+              borderColor: 'rgba(0, 242, 254, 0.4)',
+              color: '#00f2fe',
+              boxShadow: '0 0 12px rgba(0, 242, 254, 0.15)'
+            }}
+          >
+            <Layers size={14} />
+            <span>Multi-Level AI</span>
+          </button>
+        )}
+
+        {/* Voice PA Announcer Indicator / Test */}
+        <button
+          className="clean-ctrl-btn"
+          onClick={() => {
+            soundEngine.announceViolation('Fabrication Complex', ['Safety Hardhat', 'Reflective Vest']);
+          }}
+          title="Factory Voice PA Dispatcher Active. Click to test PA announcement chime."
+          style={{
+            padding: '5px 10px',
+            fontSize: '11px',
+            fontWeight: 700,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            background: 'rgba(255, 179, 0, 0.12)',
+            borderColor: 'rgba(255, 179, 0, 0.3)',
+            color: '#ffb300'
+          }}
+        >
+          <Megaphone size={12} />
+          <span>VOICE PA ACTIVE</span>
+        </button>
+
         {/* Compliance Gauge Pill */}
         <div className={`metric-pill ${complianceClass}`} title="Plant-wide PPE & Hazard Compliance">
           <span className="metric-pill-label">COMPLIANCE</span>

@@ -27,7 +27,7 @@ class PPEDetectionResult:
         confidence: float,
         track_id: Optional[int] = None,
     ):
-        self.box = [int(coord) for coord in box]  # [x1, y1, x2, y2]
+        self.box = list(box)  # [x1, y1, x2, y2]
         self.class_name = class_name.lower().strip()
         self.confidence = float(confidence)
         self.track_id = track_id
@@ -85,7 +85,7 @@ class PPEDetector:
     def __init__(
         self,
         model_path: str = "models/ppe_best.pt",
-        confidence_threshold: float = 0.40,
+        confidence_threshold: float = 0.20,
         device: str = "cpu"
     ):
         self.model_path = model_path
@@ -102,23 +102,61 @@ class PPEDetector:
             print("[PPEDetector] Warning: Ultralytics is not available. Running in stub mode.")
             return
 
-        if os.path.exists(self.model_path):
+        # Resolve path relative to project root if needed
+        resolved_path = self.model_path
+        if not os.path.isabs(resolved_path):
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            candidate = os.path.join(project_root, self.model_path)
+            if os.path.exists(candidate):
+                resolved_path = candidate
+
+        if os.path.exists(resolved_path):
             try:
-                print(f"[PPEDetector] Loading fine-tuned PPE model from: {self.model_path}")
-                self.model = YOLO(self.model_path)
+                print(f"[PPEDetector] Loading fine-tuned PPE model from: {resolved_path}")
+                self.model = YOLO(resolved_path)
                 self.is_custom_model = True
                 return
             except Exception as e:
-                print(f"[PPEDetector] Error loading custom model {self.model_path}: {e}")
+                print(f"[PPEDetector] Error loading custom model {resolved_path}: {e}")
 
         # Fallback to standard yolov8n for person detection + visual heuristic PPE validation
-        print("[PPEDetector] Custom weights not found at models/ppe_best.pt. Using pretrained yolov8n.pt baseline.")
+        print(f"[PPEDetector] Custom weights not found at {resolved_path}. Using pretrained yolov8n.pt baseline.")
         try:
             self.model = YOLO("yolov8n.pt")
             self.is_custom_model = False
         except Exception as e:
             print(f"[PPEDetector] Could not download/load yolov8n: {e}")
             self.model = None
+
+    @staticmethod
+    def preprocess_adverse_frame(frame: np.ndarray) -> np.ndarray:
+        """
+        Adverse condition enhancer:
+        Applies dual-pass CLAHE (Contrast Limited Adaptive Histogram Equalization)
+        and subtle unsharp masking when the frame suffers from dust particulate haze,
+        steam condensation, or dim industrial lighting.
+        """
+        if frame is None or frame.size == 0:
+            return frame
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        mean_lum = float(np.mean(gray))
+        std_lum = float(np.std(gray))
+
+        # Check for adverse visibility: low contrast (dust/steam haze) or low lighting
+        if mean_lum < 85.0 or std_lum < 42.0:
+            lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.8, tileGridSize=(8, 8))
+            cl = clahe.apply(l)
+            enhanced = cv2.merge((cl, a, b))
+            bgr_enh = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+
+            # Subtle unsharp mask to restore gear boundaries obscured by dust particulates
+            gaussian = cv2.GaussianBlur(bgr_enh, (0, 0), 2.0)
+            return cv2.addWeighted(bgr_enh, 1.22, gaussian, -0.22, 0)
+
+        return frame
 
     def detect(self, frame: np.ndarray) -> List[PPEDetectionResult]:
         """
@@ -130,8 +168,11 @@ class PPEDetector:
 
         results = []
         try:
+            # Apply adaptive CLAHE enhancement if adverse conditions (dust/steam/darkness) are present
+            proc_frame = self.preprocess_adverse_frame(frame)
+
             # Run inference
-            preds = self.model(frame, conf=self.confidence_threshold, device=self.device, verbose=False)
+            preds = self.model(proc_frame, conf=self.confidence_threshold, device=self.device, verbose=False)
             if not preds or len(preds) == 0:
                 return []
 
@@ -222,68 +263,93 @@ class PPEDetector:
 
     def _estimate_ppe_heuristics(self, frame: np.ndarray, person_box: List[int]) -> List[PPEDetectionResult]:
         """
-        Heuristic color-and-contrast analyzer when fine-tuned PPE weights are still training.
-        Analyzes head and torso regions for high-visibility vest and safety helmet signatures.
+        Anti-hallucination color, geometry & contrast analyzer.
+        Adapts anatomical regions to steep CCTV camera angles and eliminates false positives
+        on bare heads, dark hair, and everyday clothing.
         """
         h_frame, w_frame = frame.shape[:2]
         x1, y1, x2, y2 = person_box
         pw = max(1, x2 - x1)
         ph = max(1, y2 - y1)
+        aspect_ratio = ph / float(pw)
 
         heuristics = []
 
-        # 1. Head crop (top 20% of person)
+        # Camera Angle Adaptation:
+        # Steep overhead cameras (aspect ratio < 1.6) compress human height,
+        # so head/hardhat dominates the upper 38% and torso begins higher.
+        if aspect_ratio < 1.6:
+            head_h_ratio = 0.38
+            torso_y1_ratio = 0.22
+            torso_y2_ratio = 0.85
+        elif aspect_ratio < 2.2:
+            head_h_ratio = 0.30
+            torso_y1_ratio = 0.18
+            torso_y2_ratio = 0.78
+        else:
+            head_h_ratio = 0.22
+            torso_y1_ratio = 0.18
+            torso_y2_ratio = 0.65
+
+        # 1. Head crop
         hy1 = max(0, y1)
-        hy2 = min(h_frame, y1 + int(ph * 0.22))
-        hx1 = max(0, x1 + int(pw * 0.15))
-        hx2 = min(w_frame, x2 - int(pw * 0.15))
+        hy2 = min(h_frame, y1 + int(ph * head_h_ratio))
+        hx1 = max(0, x1 + int(pw * 0.12))
+        hx2 = min(w_frame, x2 - int(pw * 0.12))
 
         if hy2 > hy1 and hx2 > hx1:
             head_crop = frame[hy1:hy2, hx1:hx2]
             hsv = cv2.cvtColor(head_crop, cv2.COLOR_BGR2HSV)
-            
-            # Real-world Hard Hat colors: Yellow, White, Orange, Blue, Red
-            yellow_mask = cv2.inRange(hsv, np.array([15, 80, 80]), np.array([36, 255, 255]))
-            white_mask = cv2.inRange(hsv, np.array([0, 0, 175]), np.array([180, 45, 255]))
+
+            # Certified Hard Hat colors: Yellow, White, Orange, Blue, Red
+            yellow_mask = cv2.inRange(hsv, np.array([16, 80, 80]), np.array([36, 255, 255]))
+            white_mask = cv2.inRange(hsv, np.array([0, 0, 185]), np.array([180, 38, 255]))
             orange_mask = cv2.inRange(hsv, np.array([8, 120, 120]), np.array([22, 255, 255]))
             blue_mask = cv2.inRange(hsv, np.array([95, 90, 80]), np.array([130, 255, 255]))
             red_mask1 = cv2.inRange(hsv, np.array([0, 120, 100]), np.array([10, 255, 255]))
             red_mask2 = cv2.inRange(hsv, np.array([170, 120, 100]), np.array([180, 255, 255]))
-            
+
             combined_helmet = cv2.bitwise_or(yellow_mask, white_mask)
             combined_helmet = cv2.bitwise_or(combined_helmet, orange_mask)
             combined_helmet = cv2.bitwise_or(combined_helmet, blue_mask)
             combined_helmet = cv2.bitwise_or(combined_helmet, red_mask1)
             combined_helmet = cv2.bitwise_or(combined_helmet, red_mask2)
-            
-            helmet_ratio = np.sum(combined_helmet > 0) / float(combined_helmet.size)
 
-            if helmet_ratio > 0.12:
+            # Anti-Hallucination: Reject natural skin tones and dark hair textures
+            skin_mask = cv2.inRange(hsv, np.array([0, 35, 60]), np.array([25, 140, 210]))
+            dark_hair_mask = cv2.inRange(hsv, np.array([0, 0, 0]), np.array([180, 255, 60]))
+            rejection_mask = cv2.bitwise_or(skin_mask, dark_hair_mask)
+            clean_helmet = cv2.bitwise_and(combined_helmet, cv2.bitwise_not(rejection_mask))
+
+            helmet_ratio = np.sum(clean_helmet > 0) / float(max(1, clean_helmet.size))
+
+            if helmet_ratio > 0.10:
                 heuristics.append(
-                    PPEDetectionResult([hx1, hy1, hx2, hy2], "helmet", min(0.96, 0.70 + helmet_ratio * 0.25))
+                    PPEDetectionResult([hx1, hy1, hx2, hy2], "helmet", min(0.96, float(0.72 + helmet_ratio * 0.24)))
                 )
 
-        # 2. Torso crop (20% to 65% of person)
-        ty1 = min(h_frame, y1 + int(ph * 0.20))
-        ty2 = min(h_frame, y1 + int(ph * 0.65))
+        # 2. Torso crop
+        ty1 = min(h_frame, y1 + int(ph * torso_y1_ratio))
+        ty2 = min(h_frame, y1 + int(ph * torso_y2_ratio))
         tx1 = max(0, x1 + int(pw * 0.08))
         tx2 = min(w_frame, x2 - int(pw * 0.08))
 
         if ty2 > ty1 and tx2 > tx1:
             torso_crop = frame[ty1:ty2, tx1:tx2]
             hsv_torso = cv2.cvtColor(torso_crop, cv2.COLOR_BGR2HSV)
-            # High-visibility neon yellow/green, safety fluorescent orange, or reflective workwear
-            neon_green = cv2.inRange(hsv_torso, np.array([18, 45, 60]), np.array([90, 255, 255]))
-            safety_orange = cv2.inRange(hsv_torso, np.array([3, 80, 80]), np.array([25, 255, 255]))
-            reflective_silver = cv2.inRange(hsv_torso, np.array([0, 0, 160]), np.array([180, 45, 255]))
-            
+
+            # High-visibility neon lime green/yellow, safety fluorescent orange, or retroreflective tape
+            neon_green = cv2.inRange(hsv_torso, np.array([18, 55, 60]), np.array([90, 255, 255]))
+            safety_orange = cv2.inRange(hsv_torso, np.array([3, 90, 85]), np.array([25, 255, 255]))
+            reflective_silver = cv2.inRange(hsv_torso, np.array([0, 0, 170]), np.array([180, 40, 255]))
+
             vest_mask = cv2.bitwise_or(neon_green, safety_orange)
             vest_mask = cv2.bitwise_or(vest_mask, reflective_silver)
-            vest_ratio = np.sum(vest_mask > 0) / float(vest_mask.size)
+            vest_ratio = np.sum(vest_mask > 0) / float(max(1, vest_mask.size))
 
-            if vest_ratio > 0.07:
+            if vest_ratio > 0.075:
                 heuristics.append(
-                    PPEDetectionResult([tx1, ty1, tx2, ty2], "vest", min(0.96, 0.72 + vest_ratio * 0.24))
+                    PPEDetectionResult([tx1, ty1, tx2, ty2], "vest", min(0.96, float(0.72 + vest_ratio * 0.24)))
                 )
 
         return heuristics

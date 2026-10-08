@@ -2,8 +2,14 @@
 __pycache__/
 *.pyc
 *.pyo
+**/__pycache__/
+**/*.pyc
 data/uploads/*
 data/snapshots/*
+data/test_snapshots/*
 node_modules/
+**/node_modules/
 dist/
+**/dist/
 .pytest_cache/
+.vscode/

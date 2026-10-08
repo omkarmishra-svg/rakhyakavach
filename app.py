@@ -9,6 +9,7 @@ import time
 from typing import Dict, List, Any, Optional
 import cv2
 import numpy as np
+# pyrefly: ignore [missing-import]
 import streamlit as st
 from PIL import Image
 
@@ -382,7 +383,7 @@ with st.sidebar:
                     f"Camera Device Index",
                     min_value=0,
                     max_value=4,
-                    value=int(cfg["source"]) if isinstance(cfg["source"], int) else 0,
+                    value=cfg["source"] if isinstance(cfg["source"], int) else 0,
                     step=1,
                     key=f"cam_idx_{cam_id}",
                 )

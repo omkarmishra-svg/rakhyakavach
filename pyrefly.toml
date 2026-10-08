@@ -1,0 +1,33 @@
+# Pyrefly Type Checker Configuration for Raksha Kavach
+
+project-excludes = [
+    "**/dataset/**",
+    "**/kaggle_kernel/**",
+    "**/*.ipynb",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/__pycache__/**",
+    "**/.pytest_cache/**"
+]
+
+search-path = [".", "src"]
+disable-search-path-heuristics = true
+
+ignore-missing-imports = [
+    "yaml",
+    "yaml.*",
+    "cv2",
+    "cv2.*",
+    "numpy",
+    "numpy.*",
+    "ultralytics",
+    "ultralytics.*",
+    "PIL",
+    "PIL.*",
+    "google.generativeai",
+    "google.generativeai.*",
+    "pandas",
+    "pandas.*",
+    "seaborn",
+    "seaborn.*"
+]

@@ -71,6 +71,8 @@ const SingleCameraSlot: React.FC<SingleCameraSlotProps> = ({
   const [isInferencing, setIsInferencing] = useState<boolean>(false);
   const [detectedBoxes, setDetectedBoxes] = useState<any[]>([]);
   const [hazardBoxes, setHazardBoxes] = useState<any[]>([]);
+  const emptyWorkersRef = useRef<number>(0);
+  const emptyHazardsRef = useRef<number>(0);
 
   // Setup video or webcam stream
   useEffect(() => {
@@ -102,7 +104,10 @@ const SingleCameraSlot: React.FC<SingleCameraSlotProps> = ({
       }
       if (videoRef.current) {
         videoRef.current.srcObject = null;
-        videoRef.current.src = typeof config.source === 'string' ? config.source : '/data/demo_factory.mp4';
+        videoRef.current.src =
+          typeof config.source === 'string' && config.source.length > 0
+            ? config.source
+            : '/data/cctv_bay1.mp4';
         videoRef.current.play().catch(() => {});
         setIsPlaying(true);
       }
@@ -157,8 +162,25 @@ const SingleCameraSlot: React.FC<SingleCameraSlotProps> = ({
           const rawWorkers = data.workers || [];
           const rawHazards = data.hazards || [];
 
-          setDetectedBoxes(rawWorkers);
-          setHazardBoxes(rawHazards);
+          if (rawWorkers.length > 0) {
+            emptyWorkersRef.current = 0;
+            setDetectedBoxes(rawWorkers);
+          } else {
+            emptyWorkersRef.current = (emptyWorkersRef.current || 0) + 1;
+            if (emptyWorkersRef.current >= 3) {
+              setDetectedBoxes([]);
+            }
+          }
+
+          if (rawHazards.length > 0) {
+            emptyHazardsRef.current = 0;
+            setHazardBoxes(rawHazards);
+          } else {
+            emptyHazardsRef.current = (emptyHazardsRef.current || 0) + 1;
+            if (emptyHazardsRef.current >= 3) {
+              setHazardBoxes([]);
+            }
+          }
 
           const alertItems: WorkerAlertItem[] = rawWorkers.map((w: any) => ({
             worker_id: w.worker_id,
@@ -186,7 +208,7 @@ const SingleCameraSlot: React.FC<SingleCameraSlotProps> = ({
   }, [config, isInferencing, onInferenceResults]);
 
   useEffect(() => {
-    const interval = setInterval(runInference, 700);
+    const interval = setInterval(runInference, 900);
     return () => clearInterval(interval);
   }, [runInference]);
 

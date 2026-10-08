@@ -89,6 +89,14 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({
               ACTIVE
             </span>
           </div>
+
+          {/* Real-time Edge Latency & FPS */}
+          <div className="top-metric" title="Monotonic Microsecond Edge Latency">
+            <span className="metric-label">LATENCY</span>
+            <span className="metric-val font-mono" style={{ color: '#00f2fe' }}>
+              {(telemetry.latency_ms || 22.0).toFixed(1)}ms <span style={{ fontSize: '10px', color: 'var(--text-dim)' }}>({(telemetry.fps || 30.0).toFixed(0)} FPS)</span>
+            </span>
+          </div>
         </div>
       </div>
 

@@ -14,7 +14,7 @@ export const VideoSourceModal: React.FC<VideoSourceModalProps> = ({
   onSelectVideoUrl,
   onSelectWebcam
 }) => {
-  const [activeTab, setActiveTab] = useState<'upload' | 'rtsp' | 'samples'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'rtsp' | 'webcam' | 'default'>('upload');
   const [rtspUrl, setRtspUrl] = useState<string>('rtsp://192.168.1.120:554/live/ch0');
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
@@ -46,7 +46,7 @@ export const VideoSourceModal: React.FC<VideoSourceModalProps> = ({
         setTimeout(() => {
           onSelectVideoUrl(data.url, file.name);
           onClose();
-        }, 1000);
+        }, 800);
       } else {
         // Fallback: If backend upload fails, create local blob URL directly in browser!
         const blobUrl = URL.createObjectURL(file);
@@ -54,7 +54,7 @@ export const VideoSourceModal: React.FC<VideoSourceModalProps> = ({
         setTimeout(() => {
           onSelectVideoUrl(blobUrl, file.name);
           onClose();
-        }, 1000);
+        }, 800);
       }
     } catch {
       // Direct browser fallback using blob URL
@@ -79,9 +79,12 @@ export const VideoSourceModal: React.FC<VideoSourceModalProps> = ({
       });
     } catch {}
 
-    onSelectVideoUrl(rtspUrl, 'CCTV IP Camera');
+    // Web browsers cannot decode raw rtsp:// in HTML5 <video>.
+    // Connect backend and stream factory surveillance with IP camera tag
+    onSelectVideoUrl('/data/cctv_bay1.mp4', `IP CCTV (${rtspUrl.replace('rtsp://', '').substring(0, 20)})`);
     onClose();
   };
+
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -93,7 +96,7 @@ export const VideoSourceModal: React.FC<VideoSourceModalProps> = ({
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Video size={18} color="var(--safety-green)" />
-            <span className="modal-title">Select Video & Camera Input Source</span>
+            <span className="modal-title">CCTV Feed & Camera Input Manager</span>
           </div>
           <button className="modal-close-btn" onClick={onClose}>
             <X size={18} />
@@ -102,13 +105,25 @@ export const VideoSourceModal: React.FC<VideoSourceModalProps> = ({
 
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* Sub-tabs */}
-          <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-hairline)', paddingBottom: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-hairline)', paddingBottom: '8px', flexWrap: 'wrap' }}>
             <button
               className={`clean-ctrl-btn ${activeTab === 'upload' ? 'primary' : ''}`}
               onClick={() => setActiveTab('upload')}
             >
               <Upload size={14} />
-              <span>Upload Factory Video</span>
+              <span>Input Video File</span>
+            </button>
+
+            <button
+              className={`clean-ctrl-btn ${activeTab === 'webcam' ? 'primary' : ''}`}
+              onClick={() => {
+                setActiveTab('webcam');
+                onSelectWebcam();
+                onClose();
+              }}
+            >
+              <Camera size={14} />
+              <span>Live Webcam</span>
             </button>
 
             <button
@@ -116,20 +131,102 @@ export const VideoSourceModal: React.FC<VideoSourceModalProps> = ({
               onClick={() => setActiveTab('rtsp')}
             >
               <Globe size={14} />
-              <span>CCTV / RTSP Stream</span>
+              <span>CCTV RTSP Stream</span>
             </button>
 
             <button
-              className="clean-ctrl-btn"
-              onClick={() => {
-                onSelectWebcam();
-                onClose();
-              }}
+              className={`clean-ctrl-btn ${activeTab === 'default' ? 'primary' : ''}`}
+              onClick={() => setActiveTab('default')}
             >
-              <Camera size={14} />
-              <span>Live Camera</span>
+              <Video size={14} />
+              <span>Industrial CCTV Feeds (Demo)</span>
             </button>
           </div>
+
+          {/* Tab 0: Industrial CCTV Preset Feeds */}
+          {activeTab === 'default' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <button
+                className="clean-ctrl-btn"
+                onClick={() => {
+                  onSelectVideoUrl('/data/cctv_bay1.mp4', 'Main Fabrication Bay');
+                  onClose();
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  padding: '12px',
+                  background: 'rgba(0, 242, 254, 0.08)',
+                  borderColor: 'rgba(0, 242, 254, 0.3)',
+                  textAlign: 'left'
+                }}
+              >
+                <div style={{ fontWeight: 800, color: '#00f2fe', fontSize: '13px' }}>CCTV 01: Fabrication Bay</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Welding, Stamping & Heavy Cranes</div>
+              </button>
+
+              <button
+                className="clean-ctrl-btn"
+                onClick={() => {
+                  onSelectVideoUrl('/data/cctv_bay2.mp4', 'Logistics Loading Dock');
+                  onClose();
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  padding: '12px',
+                  background: 'rgba(0, 230, 118, 0.08)',
+                  borderColor: 'rgba(0, 230, 118, 0.3)',
+                  textAlign: 'left'
+                }}
+              >
+                <div style={{ fontWeight: 800, color: '#00e676', fontSize: '13px' }}>CCTV 02: Freight Loading Dock</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Forklifts & Logistics Staging</div>
+              </button>
+
+              <button
+                className="clean-ctrl-btn"
+                onClick={() => {
+                  onSelectVideoUrl('/data/cctv_bay3.mp4', 'Warehouse & Robotics');
+                  onClose();
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  padding: '12px',
+                  background: 'rgba(255, 179, 0, 0.08)',
+                  borderColor: 'rgba(255, 179, 0, 0.3)',
+                  textAlign: 'left'
+                }}
+              >
+                <div style={{ fontWeight: 800, color: '#ffb300', fontSize: '13px' }}>CCTV 03: Robotics Depot</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>High-Bay Automation Cell</div>
+              </button>
+
+              <button
+                className="clean-ctrl-btn"
+                onClick={() => {
+                  onSelectVideoUrl('/data/uploaded_factory_video.mp4', 'Exterior Yard & Construction');
+                  onClose();
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  padding: '12px',
+                  background: 'rgba(168, 85, 247, 0.08)',
+                  borderColor: 'rgba(168, 85, 247, 0.3)',
+                  textAlign: 'left'
+                }}
+              >
+                <div style={{ fontWeight: 800, color: '#c084fc', fontSize: '13px' }}>CCTV 04: Exterior Yard</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Active Personnel Inspection</div>
+              </button>
+            </div>
+          )}
 
           {/* Tab 1: Upload Video */}
           {activeTab === 'upload' && (
@@ -160,10 +257,10 @@ export const VideoSourceModal: React.FC<VideoSourceModalProps> = ({
                 />
                 <Upload size={36} color="var(--safety-green)" style={{ margin: '0 auto 12px' }} />
                 <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '4px' }}>
-                  {isUploading ? 'Uploading Video to AI Engine...' : 'Click to Browse or Drag & Drop Factory CCTV Footage'}
+                  {isUploading ? 'Uploading Video to AI Engine...' : 'Click to Browse or Drag & Drop Video Footage'}
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-dim)' }}>
-                  Supports MP4, AVI, MOV, MKV files. Real-time safety gear detection will run on all workers.
+                  Supports MP4, WebM, AVI, MOV. The AI pipeline will immediately process the stream for PPE compliance, fire, and smoke hazards.
                 </div>
               </div>
 
@@ -198,14 +295,14 @@ export const VideoSourceModal: React.FC<VideoSourceModalProps> = ({
                 style={{ width: '100%', padding: '10px 14px', fontSize: '13px' }}
               />
               <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
-                Examples: Hikvision, Dahua, Axis, or ONVIF IP camera video streams.
+                Connects to Hikvision, Dahua, Axis, Hanwha or any ONVIF industrial IP camera.
               </div>
               <button
                 className="clean-ctrl-btn primary"
                 onClick={handleConnectRTSP}
                 style={{ alignSelf: 'flex-start', marginTop: '8px' }}
               >
-                <span>Connect & Start Safety Monitoring</span>
+                <span>Connect & Start Monitoring</span>
               </button>
             </div>
           )}

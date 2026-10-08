@@ -17,6 +17,7 @@ def generate_factory_demo_video(
     height: int = 480,
 ):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    # pyrefly: ignore [missing-attribute]
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 

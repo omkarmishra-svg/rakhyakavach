@@ -105,6 +105,15 @@ export const SquareAlertGrid: React.FC<SquareAlertGridProps> = ({
                     </div>
                   )}
                 </div>
+
+                {!isCompliant && (
+                  <div style={{ marginTop: '6px', fontSize: '9px', color: '#38bdf8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span>ROUTED:</span>
+                    <span style={{ background: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '1px 5px', borderRadius: '3px' }}>
+                      Shift Floor Supervisor
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })}

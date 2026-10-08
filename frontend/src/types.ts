@@ -35,10 +35,43 @@ export interface Incident {
   severity: 'Low' | 'Medium' | 'High' | 'Critical';
   confidence: number;
   worker_id?: number | null;
+  worker_name?: string;
+  worker_role?: string;
+  is_executive?: boolean;
+  shield_admin_block?: boolean;
+  contraband_detected?: string[];
+  access_status?: 'ENTERED' | 'ACCESS_DENIED' | 'SECURITY_INTERCEPT';
   snapshot_path: string;
   status: IncidentStatus;
   acknowledged_by?: string;
   action_notes?: string;
+  assigned_role?: string;
+  action_sop?: string;
+}
+
+export interface GateLogEntry {
+  timestamp: string;
+  emp_id: string;
+  name: string;
+  role: string;
+  department: string;
+  destination_department?: string;
+  is_executive: boolean;
+  access_status: 'ENTERED' | 'ACCESS_DENIED' | 'SECURITY_INTERCEPT';
+  turnstile_unlocked: boolean;
+  required_ppe: string[];
+  worn_ppe: string[];
+  missing_ppe: string[];
+  missing_ppe_alert?: string;
+  contraband_detected: string[];
+  contraband_alert?: string;
+  guidance_route?: string;
+  remedy_guidance?: string;
+  active_guidance?: string;
+  decision_message: string;
+  severity: string;
+  gate_id: string;
+  shield_admin_block: boolean;
 }
 
 export interface HourlyViolation {
@@ -57,4 +90,11 @@ export interface PlantTelemetry {
   active_workers: number;
   latency_ms: number;
   fps: number;
+  latency_breakdown?: {
+    ingest_ms: number;
+    inference_ms: number;
+    attribution_ms: number;
+    dispatch_ms: number;
+    total_ms: number;
+  };
 }

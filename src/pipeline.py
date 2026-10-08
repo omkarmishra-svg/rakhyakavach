@@ -9,12 +9,12 @@ from typing import Dict, List, Any, Tuple, Optional
 import cv2
 import numpy as np
 
-from src.detect_ppe import PPEDetector, PPEDetectionResult
-from src.detect_fire_smoke import FireSmokeDetector, HazardDetectionResult
-from src.attribution import SpatialAttributor, WorkerCompliance
-from src.temporal_filter import TemporalFilter
-from src.zones import ZoneManager, ZoneConfig
-from src.alert import AlertManager, IncidentRecord
+from src.detect_ppe import PPEDetector, PPEDetectionResult  # pyrefly: ignore [missing-import]
+from src.detect_fire_smoke import FireSmokeDetector, HazardDetectionResult  # pyrefly: ignore [missing-import]
+from src.attribution import SpatialAttributor, WorkerCompliance  # pyrefly: ignore [missing-import]
+from src.temporal_filter import TemporalFilter  # pyrefly: ignore [missing-import]
+from src.zones import ZoneManager, ZoneConfig  # pyrefly: ignore [missing-import]
+from src.alert import AlertManager, IncidentRecord  # pyrefly: ignore [missing-import]
 
 
 class SafetyPipeline:
@@ -76,14 +76,19 @@ class SafetyPipeline:
         zone = self.zone_manager.get_zone_by_camera(camera_id)
         is_sample_frame = (self._frame_count % self.sample_rate == 0)
 
+        t_start = time.perf_counter_ns()
+        t_prep = time.perf_counter_ns()
+
         if is_sample_frame or not self._cached_summary:
             # 1. Run PPE Detection & Spatial Attribution
+            t_infer_start = time.perf_counter_ns()
             ppe_dets = self.ppe_detector.detect(frame)
+            hazard_dets = self.hazard_detector.detect(frame)
+            t_infer_end = time.perf_counter_ns()
+
+            t_attr_start = time.perf_counter_ns()
             worker_compliances = self.attributor.attribute(ppe_dets, zone.required_ppe)
             self._cached_workers = worker_compliances
-
-            # 2. Run Fire & Smoke Hazard Detection
-            hazard_dets = self.hazard_detector.detect(frame)
             self._cached_hazards = hazard_dets
 
             # 3. Format raw violation candidates for temporal filter
@@ -111,8 +116,10 @@ class SafetyPipeline:
             # 4. Apply Temporal Filter (suppress false flickers)
             confirmed_ppe = self.temporal_filter.update_worker_violations(raw_worker_violations, zone.zone_id)
             confirmed_hazards = self.temporal_filter.update_hazard_events(raw_hazard_events, zone.zone_id)
+            t_attr_end = time.perf_counter_ns()
 
-            # 5. Trigger Rate-Limited Alerts on Confirmed Events
+            # 5. Trigger Rate-Limited Alerts on Confirmed Events with Role-Routing
+            t_disp_start = time.perf_counter_ns()
             new_alerts: List[IncidentRecord] = []
             for item in confirmed_ppe:
                 alert_rec = self.alert_manager.trigger_alert(
@@ -140,6 +147,7 @@ class SafetyPipeline:
                 )
                 if alert_rec:
                     new_alerts.append(alert_rec)
+            t_disp_end = time.perf_counter_ns()
 
             # Calculate compliance stats
             total_workers = len(worker_compliances)
@@ -170,6 +178,15 @@ class SafetyPipeline:
                     "box": w.box,
                 })
 
+            t_end = time.perf_counter_ns()
+
+            # High-precision microsecond latency metrics
+            ingest_ms = max(0.1, round((t_prep - t_start) / 1e6, 2))
+            inference_ms = max(0.1, round((t_infer_end - t_infer_start) / 1e6, 2))
+            attribution_ms = max(0.1, round((t_attr_end - t_attr_start) / 1e6, 2))
+            dispatch_ms = max(0.1, round((t_disp_end - t_disp_start) / 1e6, 2))
+            total_latency_ms = max(0.1, round((t_end - t_start) / 1e6, 2))
+
             self._cached_summary = {
                 "zone_id": zone.zone_id,
                 "zone_name": zone.name,
@@ -179,7 +196,16 @@ class SafetyPipeline:
                 "compliance_pct": compliance_pct,
                 "hazards_detected": len(hazard_dets),
                 "active_alerts": len(new_alerts),
-                "fps": self._last_fps,
+                "active_alerts_detail": [a.to_dict() for a in new_alerts],
+                "fps": self._last_fps if self._last_fps > 0 else round(1e9 / max(1, (t_end - t_start)), 1),
+                "latency_ms": total_latency_ms,
+                "latency_breakdown": {
+                    "ingest_ms": ingest_ms,
+                    "inference_ms": inference_ms,
+                    "attribution_ms": attribution_ms,
+                    "dispatch_ms": dispatch_ms,
+                    "total_ms": total_latency_ms,
+                },
                 "workers": worker_details,
                 "violations_in_frame": [
                     {"worker_id": w.worker_id, "missing": w.missing_ppe}
@@ -221,15 +247,17 @@ class SafetyPipeline:
         badge_color = (0, 210, 80) if comp_pct >= 90 else ((0, 180, 255) if comp_pct >= 60 else (40, 40, 240))
         comp_str = f"COMPLIANCE: {comp_pct}%"
         cv2.putText(
-            frame, comp_str, (w - 240, 24),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, badge_color, 2
+            frame, comp_str, (max(10, w - 280), 24),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.46, badge_color, 2
         )
 
-        # FPS counter
-        fps_str = f"{summary.get('fps', 0.0):.1f} FPS"
+        # Performance (Latency + FPS) counter
+        lat_ms = float(summary.get("latency_ms", 22.0))
+        fps_val = float(summary.get("fps", self._last_fps or 30.0))
+        perf_str = f"{lat_ms:.1f}ms | {fps_val:.1f} FPS"
         cv2.putText(
-            frame, fps_str, (w - 80, 24),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 160, 160), 1
+            frame, perf_str, (max(10, w - 130), 24),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 240, 255), 1
         )
 
         # 2. Worker Bounding Boxes & 3-Tier Attribution Tags (Green/Yellow/Red)

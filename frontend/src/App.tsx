@@ -7,19 +7,24 @@ import { VideoSourceModal } from './components/VideoSourceModal';
 import { SquareAlertGrid, WorkerAlertItem } from './components/SquareAlertGrid';
 import { IncidentsView } from './components/IncidentsView';
 import { AnalyticsView } from './components/AnalyticsView';
+import { OshaCertificateModal } from './components/OshaCertificateModal';
+import { MultiCameraFeed } from './components/MultiCameraFeed';
+import { MultiLevelSafetyModal } from './components/MultiLevelSafetyModal';
+import { SmartGatekeeperView } from './components/SmartGatekeeperView';
 
 import {
   INITIAL_ZONES,
-  INITIAL_TELEMETRY,
-  CAMERA_DETECTIONS
+  INITIAL_TELEMETRY
 } from './data/mockData';
 import { Zone, Incident, IncidentStatus, DetectionItem, PlantTelemetry, HourlyViolation } from './types';
 import { soundEngine } from './utils/audio';
 import { Video, Camera, Radio } from 'lucide-react';
 
 /* ----------------------------------------------------------------
-   Camera Config: 4 available cameras. Only ONE streams at a time.
-   Other cameras appear on the side rail; clicking any switches stream.
+   Surveillance Feed Matrix:
+   CAM 01: Dedicated Live Hardware Webcam for on-stage judge demonstrations.
+   CCTV 01 - 03: Industrial factory CCTV streams with real AI detection.
+   GATE 01: Smart Airlock & Turnstile Access Control Sentinel.
    ---------------------------------------------------------------- */
 interface CameraItem {
   id: number;
@@ -35,37 +40,37 @@ const CAMERAS: CameraItem[] = [
   {
     id: 1,
     camCode: 'CAM 01',
-    name: 'Main Fabrication Bay',
-    zoneName: 'Welding & Assembly Bay',
-    type: 'cctv',
-    videoSrc: '/data/demo_factory.mp4',
-    zoneId: 'zone_1'
-  },
-  {
-    id: 2,
-    camCode: 'CAM 02',
-    name: 'Operator Sentinel',
-    zoneName: 'Live Hardware Camera',
+    name: 'Operator Live Sentinel',
+    zoneName: 'Hardware Webcam Stream',
     type: 'webcam',
     videoSrc: '',
     zoneId: 'zone_4'
   },
   {
-    id: 3,
-    camCode: 'CAM 03',
-    name: 'Logistics & Loading Dock',
-    zoneName: 'Loading Dock B',
+    id: 2,
+    camCode: 'CCTV 01',
+    name: 'Main Fabrication Bay',
+    zoneName: 'Welding & Heavy Machinery',
     type: 'cctv',
-    videoSrc: '/data/demo_factory.mp4',
+    videoSrc: '/data/cctv_bay1.mp4',
+    zoneId: 'zone_1'
+  },
+  {
+    id: 3,
+    camCode: 'CCTV 02',
+    name: 'Logistics & Loading Dock',
+    zoneName: 'Dock B & Freight Staging',
+    type: 'cctv',
+    videoSrc: '/data/cctv_bay2.mp4',
     zoneId: 'zone_2'
   },
   {
     id: 4,
-    camCode: 'CAM 04',
-    name: 'Packaging & Warehouse',
-    zoneName: 'Warehouse East',
+    camCode: 'CCTV 03',
+    name: 'Warehouse & Robotics',
+    zoneName: 'High-Bay Staging Depot',
     type: 'cctv',
-    videoSrc: '/data/demo_factory.mp4',
+    videoSrc: '/data/cctv_bay3.mp4',
     zoneId: 'zone_5'
   }
 ];
@@ -80,50 +85,25 @@ export const App: React.FC = () => {
 
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [isSourceModalOpen, setIsSourceModalOpen] = useState<boolean>(false);
+  const [isOshaModalOpen, setIsOshaModalOpen] = useState<boolean>(false);
+  const [isMultiLevelModalOpen, setIsMultiLevelModalOpen] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<'focus' | 'matrix'>('focus');
 
-  // Active single camera stream
-  const [activeCamId, setActiveCamId] = useState<number>(1);
-  const activeCam = CAMERAS.find((c) => c.id === activeCamId) || CAMERAS[0];
+  // Active single camera stream (defaults to CCTV 01 for instant live demo)
+  const [activeCamId, setActiveCamId] = useState<number>(2);
+  const activeCam = CAMERAS.find((c) => c.id === activeCamId) || CAMERAS[1];
 
   // Video / webcam states
   const [isWebcamActive, setIsWebcamActive] = useState<boolean>(false);
-  const [activeVideoSrc, setActiveVideoSrc] = useState<string>('/data/demo_factory.mp4');
-  const [activeVideoName, setActiveVideoName] = useState<string>('Standard CCTV');
+  const [activeVideoSrc, setActiveVideoSrc] = useState<string>('/data/cctv_bay1.mp4');
+  const [activeVideoName, setActiveVideoName] = useState<string>('Main Fabrication Bay');
 
-  // Real-time worker alert items (3-tier: Green, Yellow, Red)
-  const [latestWorkers, setLatestWorkers] = useState<WorkerAlertItem[]>([
-    {
-      worker_id: 1,
-      cam_id: 1,
-      camera_name: 'CAM 01',
-      status: 'COMPLIANT',
-      color: '#00e676',
-      worn_ppe: ['Helmet', 'High-Vis Vest', 'Boots'],
-      missing_ppe: []
-    },
-    {
-      worker_id: 2,
-      cam_id: 1,
-      camera_name: 'CAM 01',
-      status: 'PARTIAL',
-      color: '#ffb300',
-      worn_ppe: ['Hard Hat', 'Boots'],
-      missing_ppe: ['Safety Vest']
-    },
-    {
-      worker_id: 3,
-      cam_id: 1,
-      camera_name: 'CAM 01',
-      status: 'MISSING ALL',
-      color: '#ff1744',
-      worn_ppe: [],
-      missing_ppe: ['Hard Hat', 'Safety Vest', 'Boots']
-    }
-  ]);
+  // Real-time worker alert items (filled directly by AI detections, NO fake initial items)
+  const [latestWorkers, setLatestWorkers] = useState<WorkerAlertItem[]>([]);
   const [hasHazard, setHasHazard] = useState<boolean>(false);
+  const [hazardInfo, setHazardInfo] = useState<string>('');
 
   const activeZone = zones.find((z) => z.zone_id === activeCam.zoneId) || zones[0];
-  const activeDetections = CAMERA_DETECTIONS[activeZone.camera_id] || [];
 
   // 1. Fetch real incidents directly from SQLite database (incidents.db)
   const loadDatabaseIncidents = useCallback(async () => {
@@ -131,7 +111,7 @@ export const App: React.FC = () => {
       const res = await fetch('/api/incidents?limit=100');
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setIncidents(data);
         }
       }
@@ -173,7 +153,7 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [loadDatabaseIncidents, loadDatabaseAnalytics]);
 
-  // Switch the single streamed camera
+  // Switch camera: seamless toggle between Webcam and CCTV
   const handleSwitchCamera = (camId: number) => {
     const cam = CAMERAS.find((c) => c.id === camId);
     if (!cam) return;
@@ -184,7 +164,7 @@ export const App: React.FC = () => {
       setActiveVideoName('Live Webcam Feed');
     } else {
       setIsWebcamActive(false);
-      setActiveVideoSrc(cam.videoSrc || '/data/demo_factory.mp4');
+      setActiveVideoSrc(cam.videoSrc || '/data/cctv_bay1.mp4');
       setActiveVideoName(cam.name);
     }
   };
@@ -198,9 +178,9 @@ export const App: React.FC = () => {
 
   const handleToggleWebcam = () => {
     if (!isWebcamActive) {
-      handleSwitchCamera(2);
-    } else {
       handleSwitchCamera(1);
+    } else {
+      handleSwitchCamera(2);
     }
   };
 
@@ -254,7 +234,46 @@ export const App: React.FC = () => {
 
     try {
       soundEngine.playAlert();
+      // Voice PA Dispatcher announcement (Web Speech API + Radio chime)
+      soundEngine.announceViolation(activeZone.name, info.missing_ppe || []);
     } catch {}
+  };
+
+  // Handle fire/smoke hazard detection
+  const handleHazardDetected = (hazard: any) => {
+    setHasHazard(true);
+    const typeStr = hazard.hazard_type === 'fire' ? 'FIRE' : 'SMOKE';
+    const confPct = Math.round((hazard.confidence || 0.9) * 100);
+    const msg = `CRITICAL ${typeStr} HAZARD DETECTED on ${activeCam.camCode} (${confPct}% Confidence)`;
+    setHazardInfo(msg);
+
+    // Voice PA Hazard Announcer
+    try {
+      soundEngine.announceHazard(typeStr, activeZone.name);
+    } catch {}
+
+    const now = Date.now();
+    const lastHazardTime = (window as any).__last_hazard_log_time || 0;
+    if (now - lastHazardTime > 12000) {
+      (window as any).__last_hazard_log_time = now;
+      const hazId = `HAZ-${Math.floor(50000 + Math.random() * 50000)}`;
+      const nowTime = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const hazardInc: Incident = {
+        id: hazId,
+        timestamp: nowTime,
+        zone_id: activeZone.zone_id,
+        zone_name: activeZone.name,
+        violation_type: `${typeStr} HAZARD`,
+        severity: 'Critical',
+        confidence: hazard.confidence || 0.94,
+        worker_id: null,
+        snapshot_path: '',
+        status: 'Active',
+        action_notes: `AI Sentinel flagged high-priority ${typeStr.toLowerCase()} signature.`
+      };
+      setIncidents((prev) => [hazardInc, ...prev]);
+      setNewestIncidentId(hazId);
+    }
   };
 
   // Update worker alert grid from HeroLiveFeed AI inference results
@@ -270,7 +289,6 @@ export const App: React.FC = () => {
         worn_ppe: w.worn_ppe || []
       }));
       setLatestWorkers(mapped);
-      setHasHazard(false);
     },
     [activeCamId, activeCam.camCode]
   );
@@ -330,20 +348,49 @@ export const App: React.FC = () => {
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
         telemetry={telemetry}
+        onOpenOshaModal={() => setIsOshaModalOpen(true)}
+        onOpenMultiLevelLLM={() => setIsMultiLevelModalOpen(true)}
       />
 
       {/* 2. LIVE VISION TAB: Side Camera Selector + Single Streamed Hero Feed + Real-Time Square Alerts */}
       {currentTab === 'vision' && (
         <>
           <main className="vision-layout">
-            {/* Left Rail: Camera Selector (Click to switch stream) */}
+            {/* Left Rail: Surveillance Camera Selector */}
             <aside className="camera-thumbnail-rail">
               <div className="rail-header">
                 <div className="rail-title-row">
                   <Radio size={14} className="rail-icon" />
-                  <span className="rail-title">CAMERA FEEDS</span>
+                  <span className="rail-title">SURVEILLANCE CAMERAS</span>
                 </div>
-                <span className="rail-badge">1 STREAMING</span>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    className={`rail-badge ${viewMode === 'focus' ? 'active' : ''}`}
+                    onClick={() => setViewMode('focus')}
+                    title="Single Focused Stream View"
+                    style={{
+                      cursor: 'pointer',
+                      border: viewMode === 'focus' ? '1px solid #00f2fe' : '1px solid rgba(255,255,255,0.1)',
+                      color: viewMode === 'focus' ? '#00f2fe' : '#94a3b8',
+                      background: viewMode === 'focus' ? 'rgba(0, 242, 254, 0.12)' : 'transparent'
+                    }}
+                  >
+                    FOCUS
+                  </button>
+                  <button
+                    className={`rail-badge ${viewMode === 'matrix' ? 'active' : ''}`}
+                    onClick={() => setViewMode('matrix')}
+                    title="2x2 Security Wall Matrix"
+                    style={{
+                      cursor: 'pointer',
+                      border: viewMode === 'matrix' ? '1px solid #00f2fe' : '1px solid rgba(255,255,255,0.1)',
+                      color: viewMode === 'matrix' ? '#00f2fe' : '#94a3b8',
+                      background: viewMode === 'matrix' ? 'rgba(0, 242, 254, 0.12)' : 'transparent'
+                    }}
+                  >
+                    2x2 WALL
+                  </button>
+                </div>
               </div>
 
               <div className="camera-cards-list">
@@ -353,13 +400,16 @@ export const App: React.FC = () => {
                     <button
                       key={cam.id}
                       className={`cam-select-card ${isActive ? 'active' : ''}`}
-                      onClick={() => handleSwitchCamera(cam.id)}
-                      title={`Click to switch stream to ${cam.name}`}
+                      onClick={() => {
+                        handleSwitchCamera(cam.id);
+                        setViewMode('focus');
+                      }}
+                      title={`Click to view stream: ${cam.name}`}
                     >
                       <div className="cam-card-top">
                         <span className="cam-code-tag">{cam.camCode}</span>
                         <span className={`cam-stream-status ${isActive ? 'live' : 'standby'}`}>
-                          {isActive ? '● STREAMING' : 'CLICK TO VIEW'}
+                          {isActive ? '● STREAMING' : 'STANDBY'}
                         </span>
                       </div>
 
@@ -376,7 +426,7 @@ export const App: React.FC = () => {
                             </>
                           ) : (
                             <>
-                              <Video size={11} style={{ marginRight: '3px' }} /> CCTV
+                              <Video size={11} style={{ marginRight: '3px' }} /> CCTV RTSP
                             </>
                           )}
                         </span>
@@ -390,27 +440,57 @@ export const App: React.FC = () => {
               </div>
             </aside>
 
-            {/* Center Area: Single Active Streamed Camera */}
+            {/* Center Area: Single Active Streamed Camera OR 2x2 Matrix Wall */}
             <div className="hero-feed-area">
-              <HeroLiveFeed
-                currentZone={activeZone}
-                allZones={zones}
-                detections={activeDetections}
-                isWebcamActive={isWebcamActive}
-                activeVideoSrc={activeVideoSrc}
-                activeVideoName={activeVideoName}
-                onToggleWebcam={handleToggleWebcam}
-                onSelectCamera={(camId) => {
-                  const match = CAMERAS.find((c) => c.camCode.includes(camId));
-                  if (match) handleSwitchCamera(match.id);
-                }}
-                onSelectDetection={handleSelectDetection}
-                onOpenSourceModal={() => setIsSourceModalOpen(true)}
-                onNewIncidentDetected={handleNewIncidentDetected}
-                onSelectLiveCamera={() => handleSwitchCamera(2)}
-                onSelectCCTV={() => handleSwitchCamera(1)}
-                onInferenceWorkers={handleInferenceWorkers}
-              />
+              {viewMode === 'matrix' ? (
+                <MultiCameraFeed
+                  fullscreenCamId={null}
+                  onToggleFullscreen={(camId) => {
+                    if (camId) {
+                      handleSwitchCamera(camId);
+                      setViewMode('focus');
+                    }
+                  }}
+                  onOpenSourceModalForCam={(camId) => {
+                    handleSwitchCamera(camId);
+                    setIsSourceModalOpen(true);
+                  }}
+                  onWorkersDetected={(workers, hasHaz, hazInfo) => {
+                    setLatestWorkers(workers);
+                    if (hasHaz) {
+                      setHasHazard(true);
+                      setHazardInfo(hazInfo);
+                    }
+                  }}
+                  configs={[
+                    { id: 1, name: 'CAM 01: Operator Live Sentinel', type: 'webcam', source: '' },
+                    { id: 2, name: 'CCTV 01: Fabrication Bay', type: 'cctv', source: '/data/cctv_bay1.mp4' },
+                    { id: 3, name: 'CCTV 02: Logistics & Freight Dock', type: 'cctv', source: '/data/cctv_bay2.mp4' },
+                    { id: 4, name: 'CCTV 03: High-Bay Robotics Depot', type: 'cctv', source: '/data/cctv_bay3.mp4' }
+                  ]}
+                />
+              ) : (
+                <HeroLiveFeed
+                  currentZone={activeZone}
+                  allZones={zones}
+                  detections={[]}
+                  isWebcamActive={isWebcamActive}
+                  activeVideoSrc={activeVideoSrc}
+                  activeVideoName={activeVideoName}
+                  onToggleWebcam={handleToggleWebcam}
+                  onSelectCamera={(camId) => {
+                    const match = CAMERAS.find((c) => c.camCode.includes(camId));
+                    if (match) handleSwitchCamera(match.id);
+                  }}
+                  onSelectDetection={handleSelectDetection}
+                  onOpenSourceModal={() => setIsSourceModalOpen(true)}
+                  onNewIncidentDetected={handleNewIncidentDetected}
+                  onSelectLiveCamera={() => handleSwitchCamera(1)}
+                  onSelectCCTV={() => handleSwitchCamera(2)}
+                  onInferenceWorkers={handleInferenceWorkers}
+                  onHazardDetected={handleHazardDetected}
+                />
+              )}
             </div>
 
             {/* Right Sidebar: Real-time Square Alert Grid */}
@@ -418,7 +498,7 @@ export const App: React.FC = () => {
               <SquareAlertGrid
                 workers={latestWorkers}
                 hasHazard={hasHazard}
-                hazardInfo={`Surveillance anomaly on ${activeCam.camCode}`}
+                hazardInfo={hazardInfo || `Surveillance anomaly on ${activeCam.camCode}`}
               />
             </aside>
           </main>
@@ -433,7 +513,14 @@ export const App: React.FC = () => {
         </>
       )}
 
-      {/* 3. AUDIT LOGS TAB (Restored) */}
+      {/* 2. SMART AIRLOCK & GATE 1 ACCESS TAB */}
+      {currentTab === 'gatekeeper' && (
+        <div className="tab-stage">
+          <SmartGatekeeperView />
+        </div>
+      )}
+
+      {/* 3. AUDIT LOGS TAB */}
       {currentTab === 'incidents' && (
         <div className="tab-stage">
           <IncidentsView
@@ -445,7 +532,7 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* 4. ANALYSIS / ANALYTICS TAB (Restored) */}
+      {/* 4. ANALYSIS / ANALYTICS TAB */}
       {currentTab === 'analytics' && (
         <div className="tab-stage">
           <AnalyticsView
@@ -461,13 +548,25 @@ export const App: React.FC = () => {
         isOpen={isSourceModalOpen}
         onClose={() => setIsSourceModalOpen(false)}
         onSelectVideoUrl={handleSelectVideoUrl}
-        onSelectWebcam={() => handleSwitchCamera(2)}
+        onSelectWebcam={() => handleSwitchCamera(1)}
       />
 
       <IncidentDetailModal
         incident={selectedIncident}
         onClose={() => setSelectedIncident(null)}
         onUpdateStatus={handleUpdateStatus}
+      />
+
+      <OshaCertificateModal
+        isOpen={isOshaModalOpen}
+        onClose={() => setIsOshaModalOpen(false)}
+        telemetry={telemetry}
+        totalIncidents={incidents.length}
+      />
+
+      <MultiLevelSafetyModal
+        isOpen={isMultiLevelModalOpen}
+        onClose={() => setIsMultiLevelModalOpen(false)}
       />
     </div>
   );

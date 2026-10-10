@@ -69,17 +69,27 @@ class PPEDetector:
     """YOLOv8-based PPE Detector capable of detecting workers and their protective gear."""
 
     PPE_CLASSES = {
+        # Construction & Electrical PPE
         "helmet", "hard_hat", "hard-hat", "hat", "cap",
         "vest", "safety_vest", "safety-vest", "reflective_jacket",
-        "gloves", "safety_gloves",
-        "boots", "safety_boots", "shoes",
-        "goggles", "safety_glasses", "mask"
+        "gloves", "safety_gloves", "work_gloves",
+        "boots", "safety_boots", "shoes", "steel_toe_boots",
+        "goggles", "safety_glasses", "mask", "dust_mask",
+        "safety_harness", "harness", "fall_arrest",
+        "welding_shield", "welding_mask", "face_shield",
+        # Chemical Engineering & Hazmat PPE
+        "chemical_suit", "hazmat_suit", "chemical_apron", "tychem_suit",
+        "chemical_respirator", "respirator", "gas_mask", "cartridge_respirator",
+        "chemical_gloves", "nitrile_gloves", "butyl_gloves",
+        "chemical_boots", "gumboots", "acid_boots",
+        "scba", "scba_pack", "breathing_apparatus"
     }
 
     NEGATIVE_CLASSES = {
         "no_helmet", "no-helmet", "without_helmet",
         "no_vest", "no-vest", "without_vest",
-        "no_gloves", "no_boots"
+        "no_gloves", "no_boots",
+        "no_respirator", "no_chemical_suit", "no_harness"
     }
 
     def __init__(
@@ -140,7 +150,9 @@ class PPEDetector:
             return frame
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # pyrefly: ignore [no-matching-overload]
         mean_lum = float(np.mean(gray))
+        # pyrefly: ignore [no-matching-overload]
         std_lum = float(np.std(gray))
 
         # Check for adverse visibility: low contrast (dust/steam haze) or low lighting
@@ -195,11 +207,14 @@ class PPEDetector:
                 # If running custom PPE model, preserve fine-tuned class names
                 if self.is_custom_model:
                     results.append(PPEDetectionResult(coords, cls_name, conf, track_id))
+                    if cls_name.lower() == "person":
+                        # Run heuristics to detect gloves, boots, goggles, etc. for this specific worker
+                        heuristics = self._estimate_ppe_heuristics(frame, coords)
+                        results.extend(heuristics)
                 else:
                     # COCO pretrained fallback: detect person and estimate PPE presence
                     if cls_name == "person":
                         results.append(PPEDetectionResult(coords, "person", conf, track_id))
-                        # Inspect head & torso crops to estimate helmet / high-vis vest in demo mode
                         heuristics = self._estimate_ppe_heuristics(frame, coords)
                         results.extend(heuristics)
 
@@ -351,5 +366,72 @@ class PPEDetector:
                 heuristics.append(
                     PPEDetectionResult([tx1, ty1, tx2, ty2], "vest", min(0.96, float(0.72 + vest_ratio * 0.24)))
                 )
+
+        # 3. Hand & Glove inspection (Left and Right lower flanks or chest hold)
+        gly1 = min(h_frame, y1 + int(ph * 0.45))
+        gly2 = min(h_frame, y1 + int(ph * 0.88))
+        glx1 = max(0, x1 - int(pw * 0.12))
+        glx2 = min(w_frame, x2 + int(pw * 0.12))
+
+        if gly2 > gly1 and glx2 > glx1:
+            hands_crop = frame[gly1:gly2, glx1:glx2]
+            hsv_hands = cv2.cvtColor(hands_crop, cv2.COLOR_BGR2HSV)
+
+            # High-visibility electric yellow/orange rubber gloves, blue nitrile gloves, or thick industrial leather
+            blue_nitrile = cv2.inRange(hsv_hands, np.array([95, 70, 60]), np.array([135, 255, 255]))
+            yellow_work = cv2.inRange(hsv_hands, np.array([18, 90, 80]), np.array([36, 255, 255]))
+            orange_work = cv2.inRange(hsv_hands, np.array([5, 110, 90]), np.array([18, 255, 255]))
+            leather_work = cv2.inRange(hsv_hands, np.array([10, 40, 40]), np.array([25, 140, 150]))
+
+            # Exclude bare skin
+            bare_skin = cv2.inRange(hsv_hands, np.array([0, 30, 70]), np.array([25, 130, 220]))
+            glove_mask = cv2.bitwise_or(blue_nitrile, yellow_work)
+            glove_mask = cv2.bitwise_or(glove_mask, orange_work)
+            glove_mask = cv2.bitwise_or(glove_mask, leather_work)
+            clean_gloves = cv2.bitwise_and(glove_mask, cv2.bitwise_not(bare_skin))
+
+            glove_ratio = np.sum(clean_gloves > 0) / float(max(1, clean_gloves.size))
+            if glove_ratio > 0.05:
+                heuristics.append(
+                    PPEDetectionResult([glx1, gly1, glx2, gly2], "gloves", min(0.92, float(0.70 + glove_ratio * 0.25)))
+                )
+
+        # 4. Boots / Footwear inspection (Lower 20% of person bounding box)
+        by1 = min(h_frame, y1 + int(ph * 0.80))
+        by2 = min(h_frame, y2)
+        bx1 = max(0, x1)
+        bx2 = min(w_frame, x2)
+
+        if by2 > by1 and bx2 > bx1:
+            boots_crop = frame[by1:by2, bx1:bx2]
+            hsv_boots = cv2.cvtColor(boots_crop, cv2.COLOR_BGR2HSV)
+
+            # Dark leather/rubber steel-toe boots, yellow chemical gumboots, or heavy work shoes
+            dark_boots = cv2.inRange(hsv_boots, np.array([0, 0, 10]), np.array([180, 70, 80]))
+            yellow_gumboots = cv2.inRange(hsv_boots, np.array([18, 80, 80]), np.array([35, 255, 255]))
+            boots_mask = cv2.bitwise_or(dark_boots, yellow_gumboots)
+
+            boot_ratio = np.sum(boots_mask > 0) / float(max(1, boots_mask.size))
+            if boot_ratio > 0.12:
+                heuristics.append(
+                    PPEDetectionResult([bx1, by1, bx2, by2], "boots", min(0.90, float(0.70 + boot_ratio * 0.20)))
+                )
+
+        # 5. Goggles / Protective Eyewear inspection (Mid-band of head crop)
+        if hy2 > hy1 and hx2 > hx1:
+            ey1 = min(h_frame, hy1 + int((hy2 - hy1) * 0.35))
+            ey2 = min(h_frame, hy1 + int((hy2 - hy1) * 0.70))
+            if ey2 > ey1:
+                eye_crop = frame[ey1:ey2, hx1:hx2]
+                hsv_eye = cv2.cvtColor(eye_crop, cv2.COLOR_BGR2HSV)
+                # Anti-glare tint or frame contrast across eye bridge
+                polycarb = cv2.inRange(hsv_eye, np.array([0, 0, 180]), np.array([180, 40, 255]))
+                tinted = cv2.inRange(hsv_eye, np.array([90, 40, 50]), np.array([130, 200, 200]))
+                goggles_mask = cv2.bitwise_or(polycarb, tinted)
+                goggles_ratio = np.sum(goggles_mask > 0) / float(max(1, goggles_mask.size))
+                if goggles_ratio > 0.08:
+                    heuristics.append(
+                        PPEDetectionResult([hx1, ey1, hx2, ey2], "goggles", min(0.88, float(0.70 + goggles_ratio * 0.20)))
+                    )
 
         return heuristics

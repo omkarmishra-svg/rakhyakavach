@@ -5,7 +5,7 @@ spatial attribution, temporal smoothing, alert triggers, and HUD rendering.
 """
 
 import time
-from typing import Dict, List, Any, Tuple, Optional
+from typing import Dict, List, Any, Tuple, Optional, Set
 import cv2
 import numpy as np
 
@@ -31,7 +31,7 @@ class SafetyPipeline:
         alert_manager: Optional[AlertManager] = None,
         sample_rate: int = 3,
         ppe_conf_threshold: float = 0.40,
-        fire_conf_threshold: float = 0.45,
+        fire_conf_threshold: float = 0.22,
     ):
         self.sample_rate = max(1, sample_rate)
         self.ppe_detector = ppe_detector or PPEDetector(confidence_threshold=ppe_conf_threshold)
@@ -53,6 +53,7 @@ class SafetyPipeline:
         frame: np.ndarray,
         camera_id: str = "cam_01",
         draw_overlay: bool = True,
+        required_ppe: Optional[Set[str]] = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
         Process a single video frame through the safety pipeline.
@@ -74,6 +75,7 @@ class SafetyPipeline:
             self._fps_timer = now
 
         zone = self.zone_manager.get_zone_by_camera(camera_id)
+        effective_required_ppe = required_ppe if required_ppe is not None else zone.required_ppe
         is_sample_frame = (self._frame_count % self.sample_rate == 0)
 
         t_start = time.perf_counter_ns()
@@ -87,7 +89,7 @@ class SafetyPipeline:
             t_infer_end = time.perf_counter_ns()
 
             t_attr_start = time.perf_counter_ns()
-            worker_compliances = self.attributor.attribute(ppe_dets, zone.required_ppe)
+            worker_compliances = self.attributor.attribute(ppe_dets, effective_required_ppe)
             self._cached_workers = worker_compliances
             self._cached_hazards = hazard_dets
 

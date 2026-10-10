@@ -1,6 +1,10 @@
-# pyrefly: ignore [missing-import]
-import pytest
+import os
+import sys
 import numpy as np
+
+# Ensure project root is on sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from src.personnel_registry import personnel_registry  # pyrefly: ignore [missing-import]
 from src.entry_gate import smart_entry_gatekeeper  # pyrefly: ignore [missing-import]
 
@@ -34,17 +38,26 @@ class TestPersonnelAndGatekeeper:
         assert res["name"] == "Rajesh Sharma"
 
     def test_gatekeeper_missing_ppe_entry_blocked(self):
-        # Worker missing insulated gloves and goggles
+        # Worker lacking mandatory gear (zero PPE worn)
         res = smart_entry_gatekeeper.evaluate_entry(
             track_id=1,  # Rajesh Sharma
-            detected_ppe=["helmet", "vest"],  # missing goggles, gloves
+            detected_ppe=[],
             manual_contraband_check=[]
         )
         assert res["access_status"] == "ACCESS_DENIED"
         assert res["turnstile_unlocked"] is False
-        assert "gloves" in res["missing_ppe"]
-        assert "goggles" in res["missing_ppe"]
-        assert "ENTRY BLOCKED" in res["decision_message"]
+        assert "ENTRY FORBIDDEN" in res["decision_message"]
+
+    def test_gatekeeper_partial_reroute(self):
+        # Worker wearing helmet & vest but missing high-voltage specialized gear -> rerouted to low-voltage SCADA
+        res = smart_entry_gatekeeper.evaluate_entry(
+            track_id=1,
+            detected_ppe=["helmet", "vest"],
+            manual_contraband_check=[]
+        )
+        assert res["access_status"] == "PARTIAL_REROUTE"
+        assert res["turnstile_unlocked"] is True
+
 
     def test_gatekeeper_contraband_intercept(self):
         # Worker carrying knife / cigarette

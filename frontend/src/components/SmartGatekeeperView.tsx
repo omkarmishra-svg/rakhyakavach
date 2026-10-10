@@ -2,12 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ShieldCheck,
   ShieldAlert,
+  Shield,
   AlertTriangle,
   Lock,
   Unlock,
   CheckCircle,
   XCircle,
-  Flame,
   Radio,
   Zap,
   Briefcase,
@@ -20,9 +20,9 @@ import {
   Navigation,
   MapPin,
   AlertOctagon,
-  UserCheck,
   Shuffle,
-  RefreshCw
+  RefreshCw,
+  Cpu
 } from 'lucide-react';
 import { GateLogEntry } from '../types';
 import { soundEngine } from '../utils/audio';
@@ -33,6 +33,7 @@ interface EntrantProfile {
   role: string;
   department: string;
   destination_department?: string;
+  suggested_department?: string;
   is_executive: boolean;
   required_ppe: string[];
   worn_ppe: string[];
@@ -40,7 +41,7 @@ interface EntrantProfile {
   missing_ppe_alert?: string;
   contraband: string[];
   contraband_alert?: string;
-  access_status: 'ENTERED' | 'ACCESS_DENIED' | 'SECURITY_INTERCEPT';
+  access_status: 'ENTERED' | 'PARTIAL_REROUTE' | 'ACCESS_DENIED' | 'SECURITY_INTERCEPT';
   turnstile_unlocked: boolean;
   guidance_route?: string;
   remedy_guidance?: string;
@@ -48,162 +49,54 @@ interface EntrantProfile {
   decision_message: string;
 }
 
-const PRESET_SCENARIOS: EntrantProfile[] = [
-  {
-    emp_id: 'ELEC-1041',
-    name: 'Rajesh Sharma',
-    role: 'Senior High-Voltage Lineman',
-    department: 'Grid Transmission & 66kV Substations',
-    destination_department: 'Bay 3 Switchgear Enclosure (Zone A)',
-    is_executive: false,
-    required_ppe: ['helmet', 'vest', 'goggles', 'gloves'],
-    worn_ppe: ['helmet', 'vest', 'goggles', 'gloves'],
-    missing_ppe: [],
-    contraband: [],
-    access_status: 'ENTERED',
-    turnstile_unlocked: true,
-    guidance_route: 'Proceed through Turnstile 1 -> Follow Yellow Safety Walkway 100m -> Turn Right into Bay 3 High-Voltage Enclosure.',
-    remedy_guidance: 'Reroute to Dispenser Kiosk #2 (15m East of Gate 1) to collect missing PPE.',
-    active_guidance: '🗺️ AUTHORIZED DESTINATION (Bay 3 Switchgear Enclosure): Proceed through Turnstile 1 -> Follow Yellow Safety Walkway 100m -> Turn Right into Bay 3 High-Voltage Enclosure.',
-    decision_message: 'ACCESS GRANTED: All electrical PPE verified. Welcome, Rajesh Sharma.'
-  },
-  {
-    emp_id: 'ELEC-1082',
-    name: 'Amit Patel',
-    role: 'Substation Switchgear Electrician',
-    department: 'Substation Bay Ops',
-    destination_department: 'Substation Bay Ops (Room 102)',
-    is_executive: false,
-    required_ppe: ['helmet', 'vest', 'goggles', 'gloves'],
-    worn_ppe: ['helmet', 'vest'],
-    missing_ppe: ['goggles', 'gloves'],
-    missing_ppe_alert: '⚠️ ACCESS DENIED: Missing mandatory equipment [Safety Goggles, Insulated Electrical Gloves] for Amit Patel. Turnstile Locked.',
-    contraband: [],
-    access_status: 'ACCESS_DENIED',
-    turnstile_unlocked: false,
-    guidance_route: 'Proceed through Turnstile 1 -> Follow Blue Safety Corridor -> Enter Substation Bay Ops Room 102.',
-    remedy_guidance: 'Reroute to Safety Equipment Dispenser Kiosk #2 opposite Turnstile 1 to collect Safety Goggles & Insulated Gloves.',
-    active_guidance: '🔄 REMEDY NAVIGATION: Reroute to Safety Equipment Dispenser Kiosk #2 opposite Turnstile 1 to collect missing Safety Goggles & Insulated Gloves before entering Substation Bay Ops.',
-    decision_message: 'ENTRY BLOCKED: Missing mandatory gear [Safety Goggles, Insulated Gloves]. Don equipment before entering.'
-  },
-  {
-    emp_id: 'ELEC-1109',
-    name: 'Vikram Singh',
-    role: 'Transformer Maintenance Specialist',
-    department: 'High-Voltage Asset Reliability',
-    destination_department: 'Power Transformer Enclosure Pad 2',
-    is_executive: false,
-    required_ppe: ['helmet', 'vest', 'goggles', 'gloves'],
-    worn_ppe: ['helmet', 'vest', 'goggles', 'gloves'],
-    missing_ppe: [],
-    contraband: ['knife', 'cigarettes'],
-    contraband_alert: '🚨 CRITICAL SECURITY INTERCEPT: Prohibited item [KNIFE, CIGARETTES] detected on entrant Vikram Singh (ID: ELEC-1109, Dept: High-Voltage Asset Reliability)! Access Denied. Turnstile Locked. Plant Security notified.',
-    access_status: 'SECURITY_INTERCEPT',
-    turnstile_unlocked: false,
-    guidance_route: 'Proceed through Turnstile 1 -> Route North along Perimeter Walkway to Transformer Enclosure Pad 2.',
-    remedy_guidance: 'Reroute to Dispenser Kiosk #2 for missing PPE.',
-    active_guidance: '⛔ ACCESS HALTED: Please remain at Gate 1 Turnstile. Plant Security is en route regarding prohibited item inspection.',
-    decision_message: 'SECURITY ALERT: Prohibited items detected (KNIFE, CIGARETTES). Entry locked. Security notified.'
-  },
-  {
-    emp_id: 'ELEC-1205',
-    name: 'Sunita Rao',
-    role: 'Substation Automation & SCADA Engineer',
-    department: 'Grid Control & SCADA Automation',
-    destination_department: 'Central SCADA Automation Control Room (Room 201)',
-    is_executive: false,
-    required_ppe: ['helmet', 'vest'],
-    worn_ppe: ['helmet', 'vest'],
-    missing_ppe: [],
-    contraband: [],
-    access_status: 'ENTERED',
-    turnstile_unlocked: true,
-    guidance_route: 'Proceed through Turnstile 1 -> Follow Green Corridor to 2nd Floor SCADA Automation Control Center.',
-    remedy_guidance: 'Collect safety vest and ESD gear at Kiosk #2 before entering server panels.',
-    active_guidance: '🗺️ AUTHORIZED DESTINATION (SCADA Control Room 201): Proceed through Turnstile 1 -> Follow Green Corridor to 2nd Floor SCADA Automation Control Center.',
-    decision_message: 'ACCESS GRANTED: SCADA Control Room clearance verified. Welcome, Sunita Rao.'
-  },
-  {
-    emp_id: 'ELEC-1288',
-    name: 'Suresh Verma',
-    role: 'Circuit Breaker Overhaul Specialist',
-    department: 'Switchgear Maintenance & Reliability',
-    destination_department: 'Circuit Breaker Testing Yard (Zone C)',
-    is_executive: false,
-    required_ppe: ['helmet', 'vest', 'goggles', 'gloves'],
-    worn_ppe: ['helmet', 'vest', 'goggles', 'gloves'],
-    missing_ppe: [],
-    contraband: [],
-    access_status: 'ENTERED',
-    turnstile_unlocked: true,
-    guidance_route: 'Proceed through Turnstile 1 -> Walk down West Safety Aisle to Breaker Yard C.',
-    remedy_guidance: 'Equip arc-flash shield goggles and insulated gloves at Kiosk #2.',
-    active_guidance: '🗺️ AUTHORIZED DESTINATION: Walk down West Safety Aisle to Breaker Yard C.',
-    decision_message: 'ACCESS GRANTED: Certified for 66kV breaker yard overhaul. Welcome, Suresh Verma.'
-  },
-  {
-    emp_id: 'ELEC-1310',
-    name: 'Pooja Nair',
-    role: 'Substation Operations & Safety Officer',
-    department: 'Grid Safety & Incident Prevention',
-    destination_department: 'Floor Safety Coordination Center (Bay 1)',
-    is_executive: false,
-    required_ppe: ['helmet', 'vest'],
-    worn_ppe: ['helmet', 'vest'],
-    missing_ppe: [],
-    contraband: [],
-    access_status: 'ENTERED',
-    turnstile_unlocked: true,
-    guidance_route: 'Proceed through Turnstile 1 -> Follow Red Safety Pathway to Coordination Office.',
-    remedy_guidance: 'Collect high-vis vest and helmet at Gate 1 Reception.',
-    active_guidance: '🗺️ AUTHORIZED DESTINATION: Follow Red Safety Pathway to Coordination Office.',
-    decision_message: 'ACCESS GRANTED: Safety Officer clearance active. Welcome, Pooja Nair.'
-  },
-  {
-    emp_id: 'ELEC-1234',
-    name: 'Manoj Kumar',
-    role: 'Switchyard Protection & Relay Tech',
-    department: 'Protection & Control Bay',
-    destination_department: 'Relay Calibration & Testing Lab (Bay 4)',
-    is_executive: false,
-    required_ppe: ['helmet', 'vest', 'goggles', 'gloves'],
-    worn_ppe: ['vest', 'gloves'],
-    missing_ppe: ['helmet', 'goggles'],
-    missing_ppe_alert: '⚠️ ACCESS DENIED: Missing mandatory equipment [Dielectric Hardhat, Safety Goggles] for Manoj Kumar. Turnstile Locked.',
-    contraband: [],
-    access_status: 'ACCESS_DENIED',
-    turnstile_unlocked: false,
-    guidance_route: 'Proceed through Turnstile 1 -> Walk through Corridor 3 to Relay Testing Lab.',
-    remedy_guidance: 'Collect arc-rated dielectric hardhat and goggles at Dispenser Kiosk #2.',
-    active_guidance: '🔄 REMEDY NAVIGATION: Detour to Dispenser Kiosk #2 opposite Turnstile 1 to equip Hardhat and Goggles before entering Protection Bay.',
-    decision_message: 'ENTRY BLOCKED: Missing mandatory gear [Dielectric Hardhat, Safety Goggles]. Please equip before entry.'
-  },
-  {
-    emp_id: 'EXEC-0012',
-    name: 'Dr. Priya Verma',
-    role: 'Executive Vice President - Plant Operations',
-    department: 'Corporate Engineering & EHS Council',
-    destination_department: 'Executive Observation Deck & Floor Walkthrough',
-    is_executive: true,
-    required_ppe: ['helmet', 'vest'],
-    worn_ppe: ['helmet', 'vest'],
-    missing_ppe: [],
-    contraband: [],
-    access_status: 'ENTERED',
-    turnstile_unlocked: true,
-    guidance_route: 'Proceed through Turnstile 1 -> Take Elevator 1 to 3rd Floor Observation Deck & Safety Overlook.',
-    remedy_guidance: 'Collect executive visitor hardhat and high-vis vest at Gate 1 Reception Desk.',
-    active_guidance: '🗺️ AUTHORIZED DESTINATION (Executive Observation Deck): Proceed through Turnstile 1 -> Take Elevator 1 to 3rd Floor Observation Deck & Safety Overlook.',
-    decision_message: 'ACCESS GRANTED: Executive escort clearance active. Welcome, Dr. Priya Verma.'
-  }
-];
+const DEFAULT_INITIAL_ENTRANT: EntrantProfile = {
+  emp_id: 'OP-LIVE-01',
+  name: 'Live Operator Entrant',
+  role: 'Field Operations Specialist',
+  department: 'Grid Transmission & Substations',
+  destination_department: 'Main Fabrication & Switchgear Bay (Zone 1)',
+  suggested_department: undefined,
+  is_executive: false,
+  required_ppe: ['helmet', 'vest', 'goggles', 'gloves', 'boots'],
+  worn_ppe: [],
+  missing_ppe: ['helmet', 'vest', 'goggles', 'gloves', 'boots'],
+  contraband: [],
+  access_status: 'ACCESS_DENIED',
+  turnstile_unlocked: false,
+  decision_message: 'STAND IN FRONT OF WEBCAM / CCTV TO INITIATE LIVE AI PPE AUDIT',
+  active_guidance: 'Position yourself within camera view. Raksha Kavach evaluates PPE compliance in real time.'
+};
 
-export const SmartGatekeeperView: React.FC = () => {
-  const [currentEntrant, setCurrentEntrant] = useState<EntrantProfile>(PRESET_SCENARIOS[0]);
+interface SmartGatekeeperViewProps {
+  onProceedToMonitoring?: (targetCamId?: number) => void;
+}
+
+export const SmartGatekeeperView: React.FC<SmartGatekeeperViewProps> = ({ onProceedToMonitoring }) => {
+  const [currentEntrant, setCurrentEntrant] = useState<EntrantProfile>(DEFAULT_INITIAL_ENTRANT);
+  const currentEntrantRef = useRef<EntrantProfile>(DEFAULT_INITIAL_ENTRANT);
+  currentEntrantRef.current = currentEntrant;
+
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [gateLogs, setGateLogs] = useState<GateLogEntry[]>([]);
   const [scanTimestamp, setScanTimestamp] = useState<string>(new Date().toLocaleTimeString());
   const [autoScanEnabled, setAutoScanEnabled] = useState<boolean>(false);
+  const [dpdpAnonymizeFaces, setDpdpAnonymizeFaces] = useState<boolean>(true);
+  const [supervisorOverrideActive, setSupervisorOverrideActive] = useState<boolean>(false);
+  const [emergencyEvacActive, setEmergencyEvacActive] = useState<boolean>(false);
+
+  // Real-time AI Person Tracking & Dynamic Reticle Follower
+  const [personDetected, setPersonDetected] = useState<boolean>(false);
+  const [personBox, setPersonBox] = useState<{ x1: number; y1: number; x2: number; y2: number }>({
+    x1: 54,
+    y1: 28,
+    x2: 78,
+    y2: 95
+  });
+  const [gearBoxes, setGearBoxes] = useState<any[]>([]);
+  const isInferencingRef = useRef<boolean>(false);
+  const lastAssignedEmpIdRef = useRef<string | null>(null);
+  const emptyFramesRef = useRef<number>(0);
+  const [inferenceLatency, setInferenceLatency] = useState<number>(65);
 
   // Video Streaming & Upload Controls
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -216,12 +109,15 @@ export const SmartGatekeeperView: React.FC = () => {
   const [streamSource, setStreamSource] = useState<'video' | 'webcam' | 'upload'>('video');
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [webcamError, setWebcamError] = useState<string | null>(null);
 
-  // Fetch initial logs
+  // Fetch initial logs and auto-start CCTV stream
   useEffect(() => {
     fetchLogs();
+    if (videoRef.current) {
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
   }, []);
 
   // Update clock every second
@@ -299,9 +195,10 @@ export const SmartGatekeeperView: React.FC = () => {
   const switchToCctv = () => {
     if (webcamStreamRef.current) stopWebcam();
     setStreamSource('video');
-    setIsPlaying(false);
+    lastAssignedEmpIdRef.current = null;
     if (videoRef.current) {
-      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
     }
   };
 
@@ -350,6 +247,7 @@ export const SmartGatekeeperView: React.FC = () => {
 
   const handleSelectScenario = async (scenario: EntrantProfile) => {
     setIsScanning(true);
+    lastAssignedEmpIdRef.current = scenario.emp_id;
 
     try {
       const res = await fetch('/api/gate/scan', {
@@ -435,6 +333,9 @@ export const SmartGatekeeperView: React.FC = () => {
   // Perform live frame capture & inference scan from video/webcam/upload
   const handleScanEntrant = async (isRandom: boolean = false) => {
     setIsScanning(true);
+    if (isRandom) {
+      lastAssignedEmpIdRef.current = null;
+    }
 
     const videoEl =
       streamSource === 'webcam'
@@ -451,6 +352,10 @@ export const SmartGatekeeperView: React.FC = () => {
       cvs.height = videoEl.videoHeight || 360;
       const ctx = cvs.getContext('2d');
       if (ctx) {
+        if (streamSource === 'webcam') {
+          ctx.translate(cvs.width, 0);
+          ctx.scale(-1, 1);
+        }
         ctx.drawImage(videoEl, 0, 0, cvs.width, cvs.height);
         b64 = cvs.toDataURL('image/jpeg', 0.85);
       }
@@ -470,6 +375,18 @@ export const SmartGatekeeperView: React.FC = () => {
 
       if (res.ok) {
         const scanRes = await res.json();
+
+        // Update person tracking square if person detected
+        if (scanRes.person_detected && scanRes.norm_box) {
+          setPersonDetected(true);
+          setPersonBox({
+            x1: scanRes.norm_box[0],
+            y1: scanRes.norm_box[1],
+            x2: scanRes.norm_box[2],
+            y2: scanRes.norm_box[3]
+          });
+        }
+
         const updated: EntrantProfile = {
           emp_id: scanRes.emp_id || currentEntrant.emp_id,
           name: scanRes.name || currentEntrant.name,
@@ -490,6 +407,10 @@ export const SmartGatekeeperView: React.FC = () => {
           active_guidance: scanRes.active_guidance || currentEntrant.active_guidance,
           decision_message: scanRes.decision_message || 'Scan completed'
         };
+
+        if (isRandom && scanRes.emp_id) {
+          lastAssignedEmpIdRef.current = scanRes.emp_id;
+        }
 
         setCurrentEntrant(updated);
 
@@ -536,6 +457,154 @@ export const SmartGatekeeperView: React.FC = () => {
     }
   };
 
+  // Continuous tracking and person detection inference loop
+  const runLiveTrackInference = useCallback(async () => {
+    if (isInferencingRef.current) return;
+
+    const videoEl =
+      streamSource === 'webcam'
+        ? webcamRef.current
+        : streamSource === 'upload'
+        ? uploadedVideoRef.current
+        : videoRef.current;
+
+    if (!videoEl || videoEl.paused || videoEl.ended) return;
+    if (videoEl.videoWidth === 0 || videoEl.videoHeight === 0) return;
+
+    const startTime = performance.now();
+
+    try {
+      const cvs = hiddenCanvasRef.current || document.createElement('canvas');
+      cvs.width = 480;
+      cvs.height = 270;
+      const ctx = cvs.getContext('2d');
+      if (!ctx) return;
+
+      if (streamSource === 'webcam') {
+        ctx.translate(cvs.width, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(videoEl, 0, 0, cvs.width, cvs.height);
+      const b64 = cvs.toDataURL('image/jpeg', 0.70);
+
+      isInferencingRef.current = true;
+
+      const entrant = currentEntrantRef.current;
+      // Assign random name and role upon detecting entrant for the first time
+      const shouldRandomize = !lastAssignedEmpIdRef.current;
+
+      const res = await fetch('/api/gate/scan-live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: b64,
+          assign_random: shouldRandomize,
+          emp_id_override: shouldRandomize ? undefined : entrant.emp_id,
+          manual_contraband: entrant.contraband
+        })
+      });
+
+      const elapsed = Math.round(performance.now() - startTime);
+      setInferenceLatency(elapsed);
+
+      if (res.ok) {
+        const scanRes = await res.json();
+        if (scanRes.ok) {
+          if (scanRes.person_detected && scanRes.norm_box) {
+            emptyFramesRef.current = 0;
+            setPersonDetected(true);
+            setPersonBox({
+              x1: scanRes.norm_box[0],
+              y1: scanRes.norm_box[1],
+              x2: scanRes.norm_box[2],
+              y2: scanRes.norm_box[3]
+            });
+            if (shouldRandomize && scanRes.emp_id) {
+              lastAssignedEmpIdRef.current = scanRes.emp_id;
+            }
+
+            // Save detected gear bounding boxes for real-time overlay
+            if (scanRes.gear_boxes) {
+              setGearBoxes(scanRes.gear_boxes);
+            }
+
+            const current = currentEntrantRef.current;
+            const newWornStr = [...(scanRes.worn_ppe || [])].sort().join(',');
+            const oldWornStr = [...(current.worn_ppe || [])].sort().join(',');
+            const gearChanged = newWornStr !== oldWornStr;
+            const statusChanged = scanRes.access_status !== current.access_status;
+            const empChanged = shouldRandomize && scanRes.emp_id && scanRes.emp_id !== current.emp_id;
+            const deptChanged = scanRes.suggested_department !== current.suggested_department;
+
+            if (gearChanged || statusChanged || empChanged || deptChanged) {
+              const updated: EntrantProfile = {
+                emp_id: scanRes.emp_id || current.emp_id,
+                name: scanRes.name || current.name,
+                role: scanRes.role || current.role,
+                department: scanRes.department || current.department,
+                destination_department: scanRes.destination_department || current.destination_department,
+                suggested_department: scanRes.suggested_department || current.suggested_department,
+                is_executive: scanRes.is_executive ?? current.is_executive,
+                required_ppe: scanRes.required_ppe || current.required_ppe,
+                worn_ppe: scanRes.worn_ppe || [],
+                missing_ppe: scanRes.missing_ppe || [],
+                missing_ppe_alert: scanRes.missing_ppe_alert,
+                contraband: scanRes.contraband_detected || current.contraband,
+                contraband_alert: scanRes.contraband_alert,
+                access_status: scanRes.access_status || 'ACCESS_DENIED',
+                turnstile_unlocked: scanRes.turnstile_unlocked ?? false,
+                guidance_route: scanRes.guidance_route || current.guidance_route,
+                remedy_guidance: scanRes.remedy_guidance || current.remedy_guidance,
+                active_guidance: scanRes.active_guidance || current.active_guidance,
+                decision_message: scanRes.decision_message || 'Scan completed'
+              };
+
+              setCurrentEntrant(updated);
+
+              if (statusChanged) {
+                if (updated.access_status === 'ENTERED' || updated.access_status === 'PARTIAL_REROUTE') {
+                  soundEngine.playChime();
+                } else if (updated.access_status === 'SECURITY_INTERCEPT') {
+                  soundEngine.playCriticalSiren();
+                } else {
+                  soundEngine.playWarnBeep();
+                }
+              }
+            }
+          } else {
+            // Temporal filter: if no person detected for 3 consecutive frames
+            emptyFramesRef.current = (emptyFramesRef.current || 0) + 1;
+            if (emptyFramesRef.current >= 3) {
+              setPersonDetected(false);
+              setGearBoxes([]);
+              lastAssignedEmpIdRef.current = null;
+              if (currentEntrantRef.current.name !== DEFAULT_INITIAL_ENTRANT.name) {
+                setCurrentEntrant(DEFAULT_INITIAL_ENTRANT);
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore background stream hiccups
+    } finally {
+      isInferencingRef.current = false;
+    }
+  }, [streamSource]);
+
+  // Periodic person tracking loop while video/webcam is playing (~2.5 FPS)
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (isPlaying || streamSource === 'webcam') {
+      interval = setInterval(() => {
+        runLiveTrackInference();
+      }, 400);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isPlaying, streamSource, runLiveTrackInference]);
+
   // Quick Simulation Override: Toggle individual gear for live presentations
   const handleToggleGear = (gearKey: string) => {
     const isWorn = currentEntrant.worn_ppe.includes(gearKey);
@@ -575,7 +644,58 @@ export const SmartGatekeeperView: React.FC = () => {
     };
   }, [streamSource, autoScanEnabled]);
 
+  // Manual Supervisor Override (Human-in-the-Loop OSHA/NFPA compliant entry)
+  const handleSupervisorOverride = async () => {
+    try {
+      const res = await fetch('/api/gate/supervisor-override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supervisor_id: 'SUP-701',
+          entrant_name: currentEntrant.name,
+          entrant_emp_id: currentEntrant.emp_id,
+          reason: 'Authorized Emergency High-Voltage Substation Repair'
+        })
+      });
+      if (res.ok) {
+        soundEngine.playChime();
+        setSupervisorOverrideActive(true);
+        setCurrentEntrant((prev) => ({
+          ...prev,
+          access_status: 'ENTERED',
+          turnstile_unlocked: true,
+          decision_message: 'OVERRIDE PERMITTED by Supervisor SUP-701 (Shift Lead). Logged to immutable audit trail.'
+        }));
+        fetchLogs();
+      }
+    } catch (err) {
+      console.warn('Supervisor override error:', err);
+    }
+  };
+
+  // Emergency Evacuation Fail-Open simulation (NFPA 101 Life Safety Code)
+  const handleToggleEmergencyEvac = async () => {
+    const next = !emergencyEvacActive;
+    setEmergencyEvacActive(next);
+    if (next) {
+      soundEngine.playCriticalSiren();
+      await fetch('/api/gate/emergency-evacuate', { method: 'POST' }).catch(() => {});
+      setCurrentEntrant((prev) => ({
+        ...prev,
+        access_status: 'ENTERED',
+        turnstile_unlocked: true,
+        decision_message: 'EMERGENCY EVACUATION ACTIVE: All turnstiles de-energized open for unhindered egress.'
+      }));
+    } else {
+      soundEngine.playChime();
+      await fetch('/api/gate/reset-evacuate', { method: 'POST' }).catch(() => {});
+      handleScanEntrant(true);
+    }
+    fetchLogs();
+  };
+
   const isEntered = currentEntrant.access_status === 'ENTERED';
+  const isReroute = currentEntrant.access_status === 'PARTIAL_REROUTE';
   const isBlocked = currentEntrant.access_status === 'ACCESS_DENIED';
   const isIntercept = currentEntrant.access_status === 'SECURITY_INTERCEPT';
 
@@ -669,26 +789,51 @@ export const SmartGatekeeperView: React.FC = () => {
           </div>
         </div>
 
-        {/* Administrative Block Privacy Shield Badge */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            backgroundColor: 'rgba(139, 92, 246, 0.15)',
-            border: '1px solid rgba(139, 92, 246, 0.4)',
-            padding: '8px 14px',
-            borderRadius: '8px'
-          }}
-          title="Data boundary active: Routine worker entry telemetry is restricted to Floor EHS and does not spam administrative channels."
-        >
-          <Lock size={16} color="#a78bfa" />
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '11px', fontWeight: 800, color: '#c4b5fd', letterSpacing: '0.05em' }}>
-              ADMIN PRIVACY SHIELD ACTIVE
-            </div>
-            <div style={{ fontSize: '10px', color: '#9ca3af' }}>
-              Airlock Telemetry Isolated from Admin Block
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* DPDP Act 2023 Face Anonymization Toggle */}
+          <button
+            onClick={() => setDpdpAnonymizeFaces((prev) => !prev)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '7px 12px',
+              borderRadius: '8px',
+              backgroundColor: dpdpAnonymizeFaces ? 'rgba(16, 185, 129, 0.15)' : 'rgba(55, 65, 81, 0.5)',
+              border: `1px solid ${dpdpAnonymizeFaces ? '#10b981' : '#4b5563'}`,
+              color: dpdpAnonymizeFaces ? '#6ee7b7' : '#9ca3af',
+              fontSize: '11px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+            title="Toggles Digital Personal Data Protection (DPDP) Act 2023 edge face anonymization"
+          >
+            <ShieldCheck size={14} />
+            <span>DPDP PRIVACY SHIELD: {dpdpAnonymizeFaces ? 'FACE BLUR ON' : 'OFF'}</span>
+          </button>
+
+          {/* Administrative Block Privacy Shield Badge */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              backgroundColor: 'rgba(139, 92, 246, 0.15)',
+              border: '1px solid rgba(139, 92, 246, 0.4)',
+              padding: '8px 14px',
+              borderRadius: '8px'
+            }}
+            title="Data boundary active: Routine worker entry telemetry is restricted to Floor EHS and does not spam administrative channels."
+          >
+            <Lock size={16} color="#a78bfa" />
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#c4b5fd', letterSpacing: '0.05em' }}>
+                ADMIN PRIVACY SHIELD
+              </div>
+              <div style={{ fontSize: '10px', color: '#9ca3af' }}>
+                Floor Telemetry Isolated from HR
+              </div>
             </div>
           </div>
         </div>
@@ -913,105 +1058,165 @@ export const SmartGatekeeperView: React.FC = () => {
                 />
               )}
 
-              {/* Live AI Overlay Reticle */}
-              <div
+              {/* Authentic Industrial CCTV OSD Overlay */}
+              <div className="cctv-osd-overlay" style={{ pointerEvents: 'none', zIndex: 8 }}>
+                <div className="cctv-osd-tl">
+                  <span className="cctv-rec-pill">● REC</span>
+                  <span className="cctv-cam-code">
+                    {streamSource === 'webcam' ? 'CAM-GATE [WEBCAM]' : 'CCTV-01 [GATE-AIRLOCK]'}
+                  </span>
+                  <span className="cctv-zone-tag">GATE 1 AIRLOCK CHECKPOINT</span>
+                </div>
+                <div className="cctv-osd-tr">
+                  <span className="cctv-timestamp">{scanTimestamp}</span>
+                  <span className="cctv-specs">
+                    {streamSource === 'webcam' ? 'LOCAL WEBCAM · 720p @ 30 FPS' : 'RTSP · 1080p @ 30 FPS · H.264'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Real-time Bounding Box SVG Canvas (Exact copy from Live Vision PPE detection) */}
+              <svg
+                className="feed-overlay-canvas"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
                 style={{
                   position: 'absolute',
                   inset: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  pointerEvents: 'none'
+                  width: '100%',
+                  height: '100%',
+                  pointerEvents: 'none',
+                  zIndex: 10
                 }}
               >
-                {/* Dynamic AI Detection Box */}
-                <div
-                  style={{
-                    width: '220px',
-                    height: '290px',
-                    border: `2px ${isEntered ? 'solid #10b981' : isBlocked ? 'dashed #f59e0b' : 'solid #ef4444'}`,
-                    backgroundColor: isEntered
-                      ? 'rgba(16, 185, 129, 0.12)'
-                      : isBlocked
-                      ? 'rgba(245, 158, 11, 0.12)'
-                      : 'rgba(239, 68, 68, 0.16)',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    padding: '10px',
-                    boxShadow: isEntered
-                      ? '0 0 25px rgba(16, 185, 129, 0.35)'
-                      : isBlocked
-                      ? '0 0 25px rgba(245, 158, 11, 0.35)'
-                      : '0 0 30px rgba(239, 68, 68, 0.45)',
-                    backdropFilter: 'blur(1px)'
-                  }}
-                >
-                  {/* Top Reticle Label */}
-                  <div
-                    style={{
-                      alignSelf: 'flex-start',
-                      backgroundColor: isEntered ? '#10b981' : isBlocked ? '#f59e0b' : '#ef4444',
-                      color: '#000',
-                      fontSize: '10px',
-                      fontWeight: 900,
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      letterSpacing: '0.04em'
-                    }}
-                  >
-                    {currentEntrant.is_executive ? 'EXECUTIVE VISITOR' : 'INDIAN UTILITY OPERATOR'}
-                  </div>
+                {/* 1. Worker Equipment Frame Overlay */}
+                {personDetected && (() => {
+                  const x1 = Math.max(1, Math.min(85, personBox.x1));
+                  const y1 = Math.max(1, Math.min(80, personBox.y1));
+                  const x2 = Math.max(x1 + 10, Math.min(99, personBox.x2));
+                  const y2 = Math.max(y1 + 18, Math.min(99, personBox.y2));
+                  const width = x2 - x1;
+                  const height = y2 - y1;
 
-                  {/* Center Crosshair Target */}
-                  <div style={{ textAlign: 'center' }}>
-                    <div
-                      style={{
-                        fontSize: '15px',
-                        fontWeight: 800,
-                        color: '#fff',
-                        textShadow: '0 2px 4px rgba(0,0,0,0.9)'
-                      }}
-                    >
-                      {currentEntrant.name}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '11px',
-                        color: '#e5e7eb',
-                        fontFamily: 'monospace',
-                        textShadow: '0 1px 3px rgba(0,0,0,0.9)'
-                      }}
-                    >
-                      {currentEntrant.emp_id} // {currentEntrant.department.slice(0, 24)}
-                    </div>
-                  </div>
+                  const missing = currentEntrant.missing_ppe || [];
+                  const worn = currentEntrant.worn_ppe || [];
+                  const hasContraband = currentEntrant.contraband && currentEntrant.contraband.length > 0;
+                  const isCompliant = !hasContraband && (currentEntrant.access_status === 'ENTERED' || (missing.length === 0 && worn.length > 0));
+                  const isPartial = !hasContraband && (currentEntrant.access_status === 'PARTIAL_REROUTE' || (worn.length > 0 && missing.length > 0));
 
-                  {/* Status Pill in Reticle */}
-                  <div
-                    style={{
-                      alignSelf: 'center',
-                      padding: '4px 10px',
-                      borderRadius: '16px',
-                      fontSize: '11px',
-                      fontWeight: 800,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      backgroundColor: isEntered
-                        ? 'rgba(16, 185, 129, 0.85)'
-                        : isBlocked
-                        ? 'rgba(245, 158, 11, 0.85)'
-                        : 'rgba(239, 68, 68, 0.85)',
-                      color: '#000'
-                    }}
-                  >
-                    {isEntered ? <Unlock size={12} /> : <Lock size={12} />}
-                    <span>{currentEntrant.access_status}</span>
-                  </div>
-                </div>
-              </div>
+                  let strokeColor: string;
+                  let bgColor: string;
+                  let labelText: string;
+
+                  if (hasContraband) {
+                    strokeColor = '#ff1744';
+                    bgColor = 'rgba(255, 23, 68, 0.22)';
+                    labelText = `CONTRABAND: ${currentEntrant.contraband.join(', ').toUpperCase()}`;
+                  } else if (isCompliant) {
+                    strokeColor = '#00e676';
+                    bgColor = 'rgba(0, 230, 118, 0.14)';
+                    labelText = `WORKER #1 · ALL PPE EQUIPPED`;
+                  } else if (isPartial) {
+                    strokeColor = '#ffb300';
+                    bgColor = 'rgba(255, 179, 0, 0.16)';
+                    labelText = `WORKER #1 · MISSING: ${missing.join(', ').toUpperCase()}`;
+                  } else {
+                    strokeColor = '#ff1744';
+                    bgColor = 'rgba(255, 23, 68, 0.20)';
+                    labelText = `WORKER #1 · CRITICAL: NO PPE DETECTED`;
+                  }
+
+                  const labelWidth = Math.min(98 - x1, Math.max(width * 1.35, labelText.length * 1.95));
+                  const labelHeight = 4.4;
+                  const labelY = Math.max(0.6, y1 - labelHeight);
+
+                  return (
+                    <g key="airlock-worker-box">
+                      {/* Bounding Box Frame */}
+                      <rect
+                        x={x1}
+                        y={y1}
+                        width={width}
+                        height={height}
+                        fill={bgColor}
+                        stroke={strokeColor}
+                        strokeWidth="0.8"
+                        strokeDasharray={(!isCompliant && !isPartial) ? '2.5, 1' : 'none'}
+                        rx="1"
+                      />
+
+                      {/* Industrial Corner Bracket Accents (Live Vision style) */}
+                      <path d={`M ${x1} ${y1 + 3} L ${x1} ${y1} L ${x1 + 3} ${y1}`} fill="none" stroke={strokeColor} strokeWidth="1.4" />
+                      <path d={`M ${x2 - 3} ${y1} L ${x2} ${y1} L ${x2} ${y1 + 3}`} fill="none" stroke={strokeColor} strokeWidth="1.4" />
+                      <path d={`M ${x1} ${y2 - 3} L ${x1} ${y2} L ${x1 + 3} ${y2}`} fill="none" stroke={strokeColor} strokeWidth="1.4" />
+                      <path d={`M ${x2 - 3} ${y2} L ${x2} ${y2} L ${x2} ${y2 - 3}`} fill="none" stroke={strokeColor} strokeWidth="1.4" />
+
+                      {/* Top Label Pill Banner */}
+                      <rect
+                        x={x1}
+                        y={labelY}
+                        width={labelWidth}
+                        height={labelHeight}
+                        fill={strokeColor}
+                        rx="0.6"
+                      />
+                      <text
+                        x={x1 + 1}
+                        y={labelY + 3.1}
+                        fill="#000000"
+                        fontSize="2.3"
+                        fontWeight="900"
+                        fontFamily="monospace, sans-serif"
+                      >
+                        {labelText}
+                      </text>
+                    </g>
+                  );
+                })()}
+
+                {/* 2. Detected PPE Sub-Boxes (Helmet, Vest, Gloves, Boots, Goggles) - Clean Minimal Frames */}
+                {gearBoxes && gearBoxes.map((gb, idx) => {
+                  const [gx1, gy1, gx2, gy2] = gb.box;
+                  const gw = Math.max(gx2 - gx1, 5);
+                  const gh = Math.max(gy2 - gy1, 5);
+                  const gearTag = gb.gear.toUpperCase();
+                  const tagWidth = Math.max(gw * 0.9, gearTag.length * 1.5 + 2);
+                  const tagY = Math.max(0.6, gy1 - 2.8);
+
+                  return (
+                    <g key={`gb-${idx}`}>
+                      <rect
+                        x={gx1}
+                        y={gy1}
+                        width={gw}
+                        height={gh}
+                        fill="rgba(0, 230, 118, 0.08)"
+                        stroke="#00e676"
+                        strokeWidth="0.5"
+                        rx="0.6"
+                      />
+                      <rect
+                        x={gx1}
+                        y={tagY}
+                        width={tagWidth}
+                        height="2.6"
+                        fill="#00e676"
+                        rx="0.4"
+                      />
+                      <text
+                        x={gx1 + 0.8}
+                        y={tagY + 1.9}
+                        fill="#000000"
+                        fontSize="1.6"
+                        fontWeight="900"
+                        fontFamily="monospace, sans-serif"
+                      >
+                        {gearTag}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
 
               {/* OSD Watermark Clock & FPS */}
               <div
@@ -1036,12 +1241,16 @@ export const SmartGatekeeperView: React.FC = () => {
                 padding: '12px 18px',
                 backgroundColor: isEntered
                   ? 'rgba(16, 185, 129, 0.15)'
+                  : isReroute
+                  ? 'rgba(56, 189, 248, 0.15)'
                   : isBlocked
                   ? 'rgba(245, 158, 11, 0.15)'
                   : 'rgba(239, 68, 68, 0.2)',
                 borderTop: `1px solid ${
                   isEntered
                     ? 'rgba(16, 185, 129, 0.4)'
+                    : isReroute
+                    ? 'rgba(56, 189, 248, 0.4)'
                     : isBlocked
                     ? 'rgba(245, 158, 11, 0.4)'
                     : 'rgba(239, 68, 68, 0.4)'
@@ -1054,6 +1263,8 @@ export const SmartGatekeeperView: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 {isEntered ? (
                   <CheckCircle size={22} color="#10b981" />
+                ) : isReroute ? (
+                  <CheckCircle size={22} color="#38bdf8" />
                 ) : isBlocked ? (
                   <AlertTriangle size={22} color="#f59e0b" />
                 ) : isIntercept ? (
@@ -1066,12 +1277,16 @@ export const SmartGatekeeperView: React.FC = () => {
                     style={{
                       fontSize: '14px',
                       fontWeight: 800,
-                      color: isEntered ? '#10b981' : isBlocked ? '#f59e0b' : '#ef4444',
+                      color: isEntered ? '#10b981' : isReroute ? '#38bdf8' : isBlocked ? '#f59e0b' : '#ef4444',
                       letterSpacing: '0.04em'
                     }}
                   >
-                    {isEntered
-                      ? 'TURNSTILE UNLOCKED // ENTERED'
+                    {supervisorOverrideActive
+                      ? 'TURNSTILE UNLOCKED // SUPERVISOR OVERRIDE'
+                      : isEntered
+                      ? 'TURNSTILE UNLOCKED // FULL HAZARD PASS'
+                      : isReroute
+                      ? 'TURNSTILE UNLOCKED // LOW-HAZARD REASSIGNMENT'
                       : isBlocked
                       ? 'TURNSTILE LOCKED // ACCESS DENIED'
                       : 'SECURITY INTERCEPT // EMERGENCY GATE LOCKDOWN'}
@@ -1082,23 +1297,122 @@ export const SmartGatekeeperView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Turnstile Mechanical Indicator */}
-              <div
+              {/* Turnstile Action & Mechanical Indicator */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {onProceedToMonitoring && (isEntered || isReroute) && (
+                  <button
+                    onClick={() => onProceedToMonitoring(2)}
+                    style={{
+                      padding: '7px 14px',
+                      borderRadius: '6px',
+                      backgroundColor: '#0284c7',
+                      border: '1px solid rgba(56, 189, 248, 0.6)',
+                      color: '#ffffff',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      boxShadow: '0 0 12px rgba(2, 132, 199, 0.4)'
+                    }}
+                    title="Permit through turnstile: Monitor worker inside Plant via CCTV 02 (Logistics Bay & Fire Guard)"
+                  >
+                    <span>ENTER FACTORY -&gt; MONITOR ON CCTV 02</span>
+                    <Navigation size={12} />
+                  </button>
+                )}
+
+                <div
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    backgroundColor: isEntered ? '#10b981' : isReroute ? '#38bdf8' : '#374151',
+                    color: isEntered ? '#064e3b' : isReroute ? '#082f49' : '#9ca3af',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {isEntered || isReroute ? <Unlock size={14} /> : <Lock size={14} />}
+                  <span>{isEntered ? 'GATE OPEN' : isReroute ? 'REROUTE PASS' : 'BARRIER DOWN'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* NFPA 101 Life Safety Fail-Safe & Emergency Egress Guarantee Bar */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 16px',
+              backgroundColor: emergencyEvacActive ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.08)',
+              border: `1px solid ${emergencyEvacActive ? 'rgba(239, 68, 68, 0.5)' : 'rgba(16, 185, 129, 0.3)'}`,
+              borderRadius: '10px',
+              gap: '12px',
+              flexWrap: 'wrap'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Shield size={18} color={emergencyEvacActive ? '#ef4444' : '#10b981'} />
+              <div>
+                <div
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    color: emergencyEvacActive ? '#fca5a5' : '#6ee7b7',
+                    letterSpacing: '0.04em'
+                  }}
+                >
+                  {emergencyEvacActive
+                    ? 'EMERGENCY EVACUATION ACTIVE // ALL TURNSTILES DE-ENERGIZED OPEN'
+                    : 'LIFE-SAFETY FAIL-SAFE GUARANTEE (NFPA 101 / UL 294)'}
+                </div>
+                <div style={{ fontSize: '10px', color: '#9ca3af' }}>
+                  Egress is 100% physically unhindered. Magnetic locks de-energize open during power cut or fire alarm.
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={handleSupervisorOverride}
                 style={{
-                  padding: '6px 14px',
-                  borderRadius: '6px',
-                  backgroundColor: isEntered ? '#10b981' : '#374151',
-                  color: isEntered ? '#064e3b' : '#9ca3af',
+                  padding: '6px 12px',
                   fontSize: '11px',
                   fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
+                  backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                  border: '1px solid #3b82f6',
+                  borderRadius: '6px',
+                  color: '#93c5fd',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
                 }}
+                title="Authorized shift lead can manually override entry denial for urgent repairs (Logged to safety audit)"
               >
-                {isEntered ? <Unlock size={14} /> : <Lock size={14} />}
-                <span>{isEntered ? 'GATE OPEN' : 'BARRIER DOWN'}</span>
-              </div>
+                Supervisor Override (SUP-701)
+              </button>
+              <button
+                onClick={handleToggleEmergencyEvac}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  backgroundColor: emergencyEvacActive ? '#ef4444' : 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid #ef4444',
+                  borderRadius: '6px',
+                  color: emergencyEvacActive ? '#fff' : '#fca5a5',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                title="Simulates emergency fire alarm de-energizing all magnetic gates open"
+              >
+                {emergencyEvacActive ? 'Reset Standard Gate' : 'Simulate Fire Evacuation'}
+              </button>
             </div>
           </div>
 
@@ -1242,12 +1556,16 @@ export const SmartGatekeeperView: React.FC = () => {
             style={{
               backgroundColor: isEntered
                 ? 'rgba(16, 185, 129, 0.08)'
+                : isReroute
+                ? 'rgba(56, 189, 248, 0.08)'
                 : isBlocked
                 ? 'rgba(245, 158, 11, 0.08)'
                 : 'rgba(239, 68, 68, 0.08)',
               border: `1px solid ${
                 isEntered
                   ? 'rgba(16, 185, 129, 0.35)'
+                  : isReroute
+                  ? 'rgba(56, 189, 248, 0.35)'
                   : isBlocked
                   ? 'rgba(245, 158, 11, 0.35)'
                   : 'rgba(239, 68, 68, 0.35)'
@@ -1257,17 +1575,19 @@ export const SmartGatekeeperView: React.FC = () => {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <Navigation size={18} color={isEntered ? '#10b981' : isBlocked ? '#f59e0b' : '#ef4444'} />
+              <Navigation size={18} color={isEntered ? '#10b981' : isReroute ? '#38bdf8' : isBlocked ? '#f59e0b' : '#ef4444'} />
               <span
                 style={{
                   fontSize: '13px',
                   fontWeight: 800,
-                  color: isEntered ? '#34d399' : isBlocked ? '#fbbf24' : '#f87171',
+                  color: isEntered ? '#34d399' : isReroute ? '#38bdf8' : isBlocked ? '#fbbf24' : '#f87171',
                   letterSpacing: '0.04em'
                 }}
               >
                 {isEntered
                   ? 'AUTHORIZED DEPARTMENT WAYFINDING DIRECTIVE'
+                  : isReroute
+                  ? 'DYNAMIC ADAPTIVE DEPARTMENT RE-ASSIGNMENT'
                   : isBlocked
                   ? 'SAFETY REMEDY REDIRECTION DIRECTIVE'
                   : 'SECURITY INTERCEPT PROTOCOL'}
@@ -1275,11 +1595,13 @@ export const SmartGatekeeperView: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-              <MapPin size={20} color={isEntered ? '#10b981' : isBlocked ? '#f59e0b' : '#ef4444'} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <MapPin size={20} color={isEntered ? '#10b981' : isReroute ? '#38bdf8' : isBlocked ? '#f59e0b' : '#ef4444'} style={{ flexShrink: 0, marginTop: '2px' }} />
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 700, color: '#f3f4f6' }}>
                   {isEntered
                     ? `Authorized Bay: ${currentEntrant.destination_department || currentEntrant.department}`
+                    : isReroute
+                    ? `Suggested Bay: ${currentEntrant.suggested_department || 'Warehouse Logistics & Freight Staging (Zone 2)'}`
                     : isBlocked
                     ? 'Remedy Point: PPE Safety Dispenser Kiosk #2 (Opposite Turnstile 1)'
                     : 'Gate 1 Quarantine Zone // Security Inspection Bay'}
@@ -1344,17 +1666,39 @@ export const SmartGatekeeperView: React.FC = () => {
                 </span>
               </div>
               <span style={{ fontSize: '10px', color: '#9ca3af', fontFamily: 'monospace' }}>
-                NFPA 70E / OSHA 1910.269
+                {currentEntrant.required_ppe.some((p) => p.includes('chemical'))
+                  ? 'OSHA 1910.120 / HAZWOPER HAZMAT'
+                  : currentEntrant.required_ppe.some((p) => p.includes('harness') || p.includes('welding'))
+                  ? 'OSHA 1926 / EN 361 CONSTRUCTION RIGGING'
+                  : 'NFPA 70E / OSHA 1910.269 ELECTRICAL UTILITY'}
               </span>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              {[
-                { key: 'helmet', label: 'Dielectric Hardhat', desc: 'Class E 20kV Rated' },
-                { key: 'vest', label: 'Arc-Rated Safety Vest', desc: 'NFPA 70E High-Vis' },
-                { key: 'goggles', label: 'Arc Shield / Goggles', desc: 'ANSI Z87.1 Dielectric' },
-                { key: 'gloves', label: 'Insulated Electrical Gloves', desc: 'ASTM D120 Class 0/2' }
-              ].map((gear) => {
+              {(
+                currentEntrant.required_ppe.some((p) => p.includes('chemical'))
+                  ? [
+                      { key: 'chemical_suit', label: 'Hazmat Chemical Suit', desc: 'Level B Tychem Splash Suit' },
+                      { key: 'chemical_respirator', label: 'Chemical Respirator', desc: 'NIOSH Organic Vapor / Gas Mask' },
+                      { key: 'chemical_gloves', label: 'Chemical Gauntlets', desc: 'Nitrile / Butyl Acid-Resistant' },
+                      { key: 'chemical_boots', label: 'Acid Chemical Gumboots', desc: 'Heavy Acid & Alkali Soles' }
+                    ]
+                  : currentEntrant.required_ppe.some((p) => p.includes('harness') || p.includes('welding'))
+                  ? [
+                      { key: 'helmet', label: 'Construction Hardhat', desc: 'ANSI Type I / II Impact Helmet' },
+                      { key: 'vest', label: 'High-Vis Safety Vest', desc: 'Class 2 Reflective Vest' },
+                      { key: 'safety_harness', label: 'Fall-Arrest Safety Harness', desc: 'OSHA 1926 Class III Full-Body' },
+                      { key: 'boots', label: 'Steel-Toe Boots', desc: 'ASTM F2413 Heavy Duty Boots' },
+                      { key: 'gloves', label: 'Heavy Rigging Gloves', desc: 'ANSI Cut-Resistant Gloves' }
+                    ]
+                  : [
+                      { key: 'helmet', label: 'Dielectric Hardhat', desc: 'Class E 20kV Rated' },
+                      { key: 'vest', label: 'Arc-Rated Safety Vest', desc: 'NFPA 70E High-Vis' },
+                      { key: 'goggles', label: 'Arc Shield / Goggles', desc: 'ANSI Z87.1 Dielectric' },
+                      { key: 'gloves', label: 'Insulated Electrical Gloves', desc: 'ASTM D120 Class 0/2' },
+                      { key: 'boots', label: 'Dielectric / Steel-Toe Boots', desc: 'ASTM F2413 / EH Footwear' }
+                    ]
+              ).map((gear) => {
                 const isRequired = currentEntrant.required_ppe.includes(gear.key);
                 const isWorn = currentEntrant.worn_ppe.includes(gear.key);
                 const isMissing = isRequired && !isWorn;
@@ -1426,9 +1770,9 @@ export const SmartGatekeeperView: React.FC = () => {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Flame size={18} color={currentEntrant.contraband.length > 0 ? '#ef4444' : '#f59e0b'} />
+                <ShieldAlert size={18} color={currentEntrant.contraband.length > 0 ? '#ef4444' : '#f59e0b'} />
                 <span style={{ fontSize: '13px', fontWeight: 800, color: '#f3f4f6', letterSpacing: '0.04em' }}>
-                  MISCHIEVOUS & PROHIBITED ITEM RADAR
+                  PROHIBITED & CONTRABAND ITEM RADAR
                 </span>
               </div>
               <span
@@ -1460,7 +1804,7 @@ export const SmartGatekeeperView: React.FC = () => {
                   lineHeight: '1.4'
                 }}
               >
-                <strong>🚨 DISPATCH ALERT:</strong> Prohibited item detected on entrant{' '}
+                <strong>[DISPATCH ALERT]</strong> Prohibited item detected on entrant{' '}
                 <strong>{currentEntrant.name}</strong> ({currentEntrant.department}). Turnstile locked down. Plant
                 Security notified for gate intercept.
               </div>
@@ -1526,105 +1870,215 @@ export const SmartGatekeeperView: React.FC = () => {
             </div>
           </div>
 
-          {/* Interactive Indian Demo Personnel Selection */}
+          {/* Live Edge AI Neural Engine & Airlock Gate Telemetry */}
           <div
             style={{
               backgroundColor: '#111827',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
               borderRadius: '12px',
-              padding: '14px 16px'
+              padding: '16px',
+              background: 'linear-gradient(180deg, rgba(17, 24, 39, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%)'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <div
                 style={{
-                  fontSize: '11px',
+                  fontSize: '12px',
                   fontWeight: 800,
-                  color: '#9ca3af',
+                  color: '#93c5fd',
                   letterSpacing: '0.05em',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px'
+                  gap: '8px'
                 }}
               >
-                <UserCheck size={14} color="#3b82f6" />
-                <span>INDIAN DEMO PERSONNEL PROFILES</span>
+                <Cpu size={16} color="#3b82f6" />
+                <span>LIVE EDGE AI NEURAL ENGINE & TELEMETRY</span>
               </div>
 
-              {/* Random Profile Quick Picker */}
-              <button
-                onClick={() => handleScanEntrant(true)}
-                style={{
-                  backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                  border: '1px solid rgba(59, 130, 246, 0.4)',
-                  borderRadius: '5px',
-                  color: '#93c5fd',
-                  fontSize: '10px',
-                  fontWeight: 700,
-                  padding: '3px 8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                <Shuffle size={11} />
-                <span>RANDOMIZE</span>
-              </button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              {PRESET_SCENARIOS.map((scen, idx) => (
-                <button
-                  key={scen.emp_id}
-                  onClick={() => handleSelectScenario(scen)}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span
                   style={{
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    backgroundColor:
-                      currentEntrant.emp_id === scen.emp_id ? 'rgba(59, 130, 246, 0.25)' : 'rgba(31, 41, 55, 0.6)',
-                    border: `1px solid ${
-                      currentEntrant.emp_id === scen.emp_id ? '#3b82f6' : 'rgba(255, 255, 255, 0.08)'
-                    }`,
-                    color: '#f9fafb',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    textAlign: 'left',
-                    cursor: 'pointer',
                     display: 'flex',
-                    flexDirection: 'column',
-                    gap: '2px'
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '10px',
+                    fontWeight: 800,
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    color: '#34d399',
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    border: '1px solid rgba(16, 185, 129, 0.3)'
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>
-                      {idx + 1}. {scen.name}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: '9px',
-                        padding: '1px 5px',
-                        borderRadius: '3px',
-                        backgroundColor:
-                          scen.access_status === 'ENTERED'
-                            ? 'rgba(16, 185, 129, 0.3)'
-                            : scen.access_status === 'ACCESS_DENIED'
-                            ? 'rgba(245, 158, 11, 0.3)'
-                            : 'rgba(239, 68, 68, 0.3)',
-                        color:
-                          scen.access_status === 'ENTERED'
-                            ? '#34d399'
-                            : scen.access_status === 'ACCESS_DENIED'
-                            ? '#fbbf24'
-                            : '#f87171'
-                      }}
-                    >
-                      {scen.access_status}
-                    </span>
-                  </div>
-                  <span style={{ fontSize: '10px', color: '#9ca3af', fontWeight: 400 }}>{scen.role}</span>
+                  <span
+                    style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      backgroundColor: '#10b981',
+                      boxShadow: '0 0 6px #10b981'
+                    }}
+                  />
+                  ACTIVE · {inferenceLatency}ms
+                </span>
+
+                <button
+                  onClick={() => handleScanEntrant(true)}
+                  style={{
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                    border: '1px solid rgba(59, 130, 246, 0.4)',
+                    borderRadius: '5px',
+                    color: '#93c5fd',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    cursor: 'pointer'
+                  }}
+                  title="Rescan camera feed and assign identity to new approaching entrant"
+                >
+                  <RefreshCw size={11} />
+                  <span>RE-ID ENTRANT</span>
                 </button>
-              ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+              {/* Telemetry Tile 1: AI Model */}
+              <div
+                style={{
+                  backgroundColor: 'rgba(31, 41, 55, 0.6)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '8px',
+                  padding: '10px 12px'
+                }}
+              >
+                <div style={{ fontSize: '10px', color: '#9ca3af', fontWeight: 600, marginBottom: '2px' }}>
+                  CORE VISION MODEL
+                </div>
+                <div style={{ fontSize: '12px', color: '#f3f4f6', fontWeight: 800, fontFamily: 'monospace' }}>
+                  YOLOv8-PPE Fine-tuned
+                </div>
+                <div style={{ fontSize: '10px', color: '#60a5fa', marginTop: '2px' }}>
+                  20 Classes · Live Real-Time Feed
+                </div>
+              </div>
+
+              {/* Telemetry Tile 2: Entrant Lock */}
+              <div
+                style={{
+                  backgroundColor: 'rgba(31, 41, 55, 0.6)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '8px',
+                  padding: '10px 12px'
+                }}
+              >
+                <div style={{ fontSize: '10px', color: '#9ca3af', fontWeight: 600, marginBottom: '2px' }}>
+                  TARGET TRACKING
+                </div>
+                <div
+                  style={{
+                    fontSize: '12px',
+                    color: personDetected ? '#34d399' : '#f59e0b',
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {personDetected ? 'PERSON TRACKED' : 'SEARCHING GATE...'}
+                </div>
+                <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>
+                  {personDetected ? `${currentEntrant.name} (${currentEntrant.emp_id})` : 'Stand before camera to scan'}
+                </div>
+              </div>
+
+              {/* Telemetry Tile 3: Verified Gear */}
+              <div
+                style={{
+                  backgroundColor: 'rgba(31, 41, 55, 0.6)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '8px',
+                  padding: '10px 12px'
+                }}
+              >
+                <div style={{ fontSize: '10px', color: '#9ca3af', fontWeight: 600, marginBottom: '2px' }}>
+                  GEAR COMPLIANCE
+                </div>
+                <div
+                  style={{
+                    fontSize: '12px',
+                    color:
+                      currentEntrant.worn_ppe.length === currentEntrant.required_ppe.length && currentEntrant.worn_ppe.length > 0
+                        ? '#34d399'
+                        : currentEntrant.worn_ppe.length > 0
+                        ? '#38bdf8'
+                        : '#f87171',
+                    fontWeight: 800
+                  }}
+                >
+                  {currentEntrant.worn_ppe.length} / {currentEntrant.required_ppe.length} ITEMS WORN
+                </div>
+                <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>
+                  {currentEntrant.worn_ppe.length > 0
+                    ? currentEntrant.worn_ppe.map((g) => g.toUpperCase()).join(' · ')
+                    : 'No safety gear detected'}
+                </div>
+              </div>
+
+              {/* Telemetry Tile 4: Turnstile Decision */}
+              <div
+                style={{
+                  backgroundColor: 'rgba(31, 41, 55, 0.6)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '8px',
+                  padding: '10px 12px'
+                }}
+              >
+                <div style={{ fontSize: '10px', color: '#9ca3af', fontWeight: 600, marginBottom: '2px' }}>
+                  TURNSTILE INTERLOCK
+                </div>
+                <div
+                  style={{
+                    fontSize: '12px',
+                    color: currentEntrant.turnstile_unlocked ? '#34d399' : '#f87171',
+                    fontWeight: 800
+                  }}
+                >
+                  {currentEntrant.turnstile_unlocked ? 'UNLOCKED / PERMITTED' : 'LOCKED / BLOCKED'}
+                </div>
+                <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>
+                  {currentEntrant.access_status} · {currentEntrant.suggested_department || currentEntrant.destination_department}
+                </div>
+              </div>
+            </div>
+
+            {/* Live Camera Gate Audit Trigger */}
+            <div style={{ marginTop: '12px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => handleScanEntrant(false)}
+                disabled={isScanning}
+                style={{
+                  backgroundColor: '#2563eb',
+                  border: 'none',
+                  borderRadius: '6px',
+                  color: '#ffffff',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  padding: '6px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: isScanning ? 'not-allowed' : 'pointer',
+                  opacity: isScanning ? 0.7 : 1
+                }}
+              >
+                <Camera size={13} />
+                <span>{isScanning ? 'AUDITING FRAME...' : 'CAPTURE AUDIT RECORD'}</span>
+              </button>
             </div>
           </div>
         </div>

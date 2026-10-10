@@ -213,8 +213,8 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
 
     try {
       const canvas = canvasRef.current || document.createElement('canvas');
-      canvas.width = 480;
-      canvas.height = 270;
+      canvas.width = 640;
+      canvas.height = 360;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
@@ -224,7 +224,7 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
       }
       ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
 
       setIsInferencing(true);
       const res = await fetch('/api/analyze-frame', {
@@ -382,7 +382,7 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
     if (isTrespass) {
       status = 'TRESPASS';
       strokeColor = '#ff1744';
-      labelText = `⚠️ WORKER #${w.worker_id} · RESTRICTED CELL TRESPASS!`;
+      labelText = `RESTRICTED CELL TRESPASS: WORKER #${w.worker_id}`;
     } else if (isCompliant) {
       status = 'COMPLIANT';
       strokeColor = '#00e676';
@@ -454,7 +454,7 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
           <button
             className={`cam-switch-btn ${isWebcamActive ? 'active' : ''}`}
             onClick={onSelectLiveCamera}
-            title="Switch to live hardware camera / webcam to demonstrate on yourself"
+            title="Switch to live optical camera / webcam"
           >
             <Camera size={13} style={{ marginRight: '4px' }} />
             Live Webcam
@@ -624,7 +624,7 @@ export const HeroLiveFeed: React.FC<HeroLiveFeedProps> = ({
                 fontFamily="monospace, sans-serif"
                 letterSpacing="0.02em"
               >
-                ⚠️ DANGER: EXCLUSION ZONE (RESTRICTED)
+                DANGER: EXCLUSION ZONE (RESTRICTED)
               </text>
             </g>
           )}

@@ -67,7 +67,7 @@ class FireSmokeDetector:
     def __init__(
         self,
         model_path: str = "models/fire_smoke_best.pt",
-        confidence_threshold: float = 0.45,
+        confidence_threshold: float = 0.22,
         device: str = "cpu",
     ):
         self.model_path = model_path
@@ -209,16 +209,16 @@ class FireSmokeDetector:
     @staticmethod
     def _has_flame_chromaticity(crop: np.ndarray) -> bool:
         """
-        Verify candidate fire contains active flame chromaticity (H in 0-22 or 165-180, S > 100, V > 160)
+        Verify candidate fire contains active flame chromaticity (H in 0-26 or 160-180, S > 70, V > 140)
         rather than neon clothing or static yellow equipment.
         """
         if crop is None or crop.size < 40:
             return True
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-        flame_mask1 = cv2.inRange(hsv, np.array([0, 100, 160]), np.array([22, 255, 255]))
-        flame_mask2 = cv2.inRange(hsv, np.array([165, 100, 160]), np.array([180, 255, 255]))
+        flame_mask1 = cv2.inRange(hsv, np.array([0, 70, 140]), np.array([26, 255, 255]))
+        flame_mask2 = cv2.inRange(hsv, np.array([160, 70, 140]), np.array([180, 255, 255]))
         flame_ratio = float(np.sum((flame_mask1 > 0) | (flame_mask2 > 0))) / float(max(1, flame_mask1.size))
-        return flame_ratio > 0.035
+        return flame_ratio > 0.015
 
     def _detect_flame_heuristic(self, frame: np.ndarray) -> List[HazardDetectionResult]:
         """

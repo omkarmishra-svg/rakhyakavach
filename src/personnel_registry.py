@@ -218,6 +218,60 @@ class PersonnelRegistry:
             guidance_route="Proceed through Turnstile 1 -> Proceed straight 80m to Busbar Enclosure.",
             remedy_guidance="Collect dielectric gear at Kiosk #2."
         ),
+        # Chemical Engineering & Hazmat Operations
+        "CHEM-2045": PersonnelProfile(
+            emp_id="CHEM-2045",
+            name="Dr. Priya Sengupta",
+            role="Senior Chemical Process Engineer",
+            department="Petrochemical Reactor & Olefin Unit",
+            is_executive=False,
+            required_ppe=["chemical_suit", "chemical_respirator", "chemical_gloves", "chemical_boots"],
+            access_clearance="Level 4 - Toxic & Corrosive Chemical Certified",
+            avatar_color="#059669",
+            destination_department="Reactor Unit R-402 (Hazard Zone C)",
+            guidance_route="Proceed through Air-Lock Gate 2 -> Enter Chemical Decontamination Corridor -> Access Reactor Unit R-402.",
+            remedy_guidance="Equip Tychem Chemical Splash Suit, Full-Face Gas Mask, Nitrile Gauntlets, and Acid Gumboots at Hazmat Kiosk #4."
+        ),
+        "CHEM-2088": PersonnelProfile(
+            emp_id="CHEM-2088",
+            name="Arun Nair",
+            role="Hazmat Acid Wash & Neutralization Tech",
+            department="Acid Transfer & Scrubber Operations",
+            is_executive=False,
+            required_ppe=["chemical_suit", "chemical_respirator", "chemical_gloves", "chemical_boots"],
+            access_clearance="Level 3 - Corrosive Acid Bay Certified",
+            avatar_color="#10b981",
+            destination_department="Acid Neutralization Bay 1 (Corrosive Zone)",
+            guidance_route="Proceed through Air-Lock Gate 2 -> Follow Yellow Chemical Trench to Acid Scrubber Bay 1.",
+            remedy_guidance="Collect acid-resistant Tychem suit, cartridge respirator, and butyl gloves at Hazmat Safety Dispenser #4."
+        ),
+        # Construction & Structural Engineering Operations
+        "CONST-3081": PersonnelProfile(
+            emp_id="CONST-3081",
+            name="Arjun Deshmukh",
+            role="High-Rise Scaffolding & Rigging Lead",
+            department="Civil Structural & Scaffolding Division",
+            is_executive=False,
+            required_ppe=["helmet", "vest", "boots", "gloves", "safety_harness"],
+            access_clearance="Level 3 - Work-at-Height & Scaffolding Certified",
+            avatar_color="#e11d48",
+            destination_department="Tower Crane & Scaffolding Sector 7",
+            guidance_route="Proceed through Turnstile 1 -> Follow Orange Perimeter Pathway to Tower Scaffolding Sector 7.",
+            remedy_guidance="Collect Class III Full-Body Fall Arrest Harness, Hardhat, and High-Traction Boots at Rigging Kiosk #3."
+        ),
+        "CONST-3120": PersonnelProfile(
+            emp_id="CONST-3120",
+            name="Kavita Reddy",
+            role="Structural Steel & Heavy Fabrication Welder",
+            department="Heavy Fabrication & Arc-Welding Bay",
+            is_executive=False,
+            required_ppe=["helmet", "vest", "boots", "gloves", "welding_shield"],
+            access_clearance="Level 3 - Hot Work & Arc Radiation Certified",
+            avatar_color="#d97706",
+            destination_department="Fabrication Bay 5 (Hot Work Zone)",
+            guidance_route="Proceed through Turnstile 1 -> Walk down East Fabrication Aisle to Welding Bay 5.",
+            remedy_guidance="Collect auto-darkening welding shield, leather welding gauntlets, and steel-toe boots at Kiosk #3."
+        ),
         # Executive Leadership & Plant Directors
         "EXEC-0012": PersonnelProfile(
             emp_id="EXEC-0012",
@@ -251,17 +305,20 @@ class PersonnelRegistry:
     TRACK_MAPPING: Dict[int, str] = {
         1: "ELEC-1041",
         2: "ELEC-1082",
-        3: "ELEC-1109",
-        4: "ELEC-1145",
+        3: "CHEM-2045",
+        4: "CONST-3081",
         5: "EXEC-0012",
         6: "EXEC-0045",
-        7: "ELEC-1205",
-        8: "ELEC-1234",
+        7: "CHEM-2088",
+        8: "CONST-3120",
         9: "ELEC-1288",
         10: "ELEC-1310",
+        11: "ELEC-1109",
+        12: "ELEC-1145",
         101: "ELEC-1041",
-        102: "ELEC-1082",
-        103: "EXEC-0012"
+        102: "CHEM-2045",
+        103: "CONST-3081",
+        104: "EXEC-0012"
     }
 
     def __init__(self):

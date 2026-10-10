@@ -1,0 +1,43 @@
+# ==============================================================================
+# Raksha Kavach // Autonomous Industrial Safety & Smart Airlock Gate Sentinel
+# Turnkey Docker Compose Production Orchestration
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  raksha-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: raksha-ai-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  raksha-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: raksha-sentry-ui
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      raksha-backend:
+        condition: service_healthy
+
+networks:
+  default:
+    name: raksha-safety-network

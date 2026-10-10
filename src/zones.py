@@ -63,12 +63,33 @@ DEFAULT_ZONES: Dict[str, ZoneConfig] = {
         risk_level="Critical",
         description="High heat and hazardous chemical storage. Strict PPE enforcement.",
     ),
+    "zone_chem": ZoneConfig(
+        zone_id="zone_chem",
+        name="Petrochemical Reactor & Acid Wash Bay",
+        required_ppe=["chemical_suit", "chemical_respirator", "chemical_gloves", "chemical_boots"],
+        risk_level="Critical",
+        description="Exothermic synthesis, volatile organic vapors, and corrosive acid wash. Full hazmat kit mandatory.",
+    ),
+    "zone_const": ZoneConfig(
+        zone_id="zone_const",
+        name="High-Rise Scaffolding & Rigging Bay",
+        required_ppe=["helmet", "vest", "boots", "safety_harness", "gloves"],
+        risk_level="Critical",
+        description="Work at elevation exceeding 12m, suspended scaffolding, and overhead girder hoist paths.",
+    ),
+    "zone_weld": ZoneConfig(
+        zone_id="zone_weld",
+        name="Heavy Fabrication & Arc-Welding Bay",
+        required_ppe=["helmet", "welding_shield", "gloves", "vest", "boots"],
+        risk_level="High",
+        description="High-amperage TIG/MIG welding, oxy-acetylene torches, molten spatter, and intense UV arc flash.",
+    ),
     "zone_gate": ZoneConfig(
         zone_id="zone_gate",
         name="Smart Airlock & Gate 1 Entry",
         required_ppe=["helmet", "vest", "goggles", "gloves"],
         risk_level="High",
-        description="Electrical facility personnel entry turnstile with automated compliance and contraband screening.",
+        description="Electrical & chemical personnel entry turnstile with automated multi-domain compliance screening.",
     ),
 }
 
@@ -78,6 +99,9 @@ DEFAULT_CAMERA_MAP: Dict[str, str] = {
     "cam_02": "zone_2",
     "cam_03": "zone_3",
     "cam_04": "zone_4",
+    "cam_chem": "zone_chem",
+    "cam_const": "zone_const",
+    "cam_weld": "zone_weld",
     "cam_gate": "zone_gate",
     "gate_01": "zone_gate",
     "gate": "zone_gate",
@@ -95,8 +119,24 @@ class ZoneManager:
 
     def get_zone_by_camera(self, camera_id: str) -> ZoneConfig:
         """Resolve a camera identifier to its assigned zone configuration."""
-        zone_id = self._camera_map.get(camera_id, "zone_1")
-        return self._zones.get(zone_id, self._zones["zone_1"])
+        cid = (camera_id or "").lower().strip()
+        # Direct zone match
+        if cid in self._zones:
+            return self._zones[cid]
+        # Exact camera map lookup
+        zone_id = self._camera_map.get(cid)
+        if zone_id and zone_id in self._zones:
+            return self._zones[zone_id]
+        # Flexible match for CCTV / Cam labels
+        if "gate" in cid or "cam_04" in cid or "cctv 04" in cid or "cam 4" in cid or "gate_01" in cid:
+            return self._zones.get("zone_gate", self._zones.get("zone_4", self._zones["zone_1"]))
+        if "2" in cid or "bay2" in cid or "dock" in cid or "logistics" in cid:
+            return self._zones.get("zone_2", self._zones["zone_1"])
+        if "3" in cid or "bay3" in cid or "robot" in cid or "depot" in cid:
+            return self._zones.get("zone_3", self._zones["zone_1"])
+        if "1" in cid or "bay1" in cid or "fab" in cid:
+            return self._zones.get("zone_1", self._zones["zone_1"])
+        return self._zones["zone_1"]
 
     def get_zone(self, zone_id: str) -> Optional[ZoneConfig]:
         """Get zone config by zone_id."""

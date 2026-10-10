@@ -1,62 +1,92 @@
 {
-  "timestamp": 1791467930.4791293,
-  "composite": {
-    "precision": 89.7,
-    "recall": 87.7,
-    "f1": 88.7,
-    "latency_ms": 200.6,
-    "fps": 5.4
-  },
-  "results": [
+  "timestamp": 1791489521.1070404,
+  "backbone_classes": [
     {
-      "condition": "1. Clean Factory Baseline",
-      "precision_pct": 94.6,
-      "recall_pct": 92.4,
-      "f1_score": 93.5,
-      "false_positive_rate": 1.8,
-      "suppression_pct": 96.0,
-      "avg_latency_ms": 278.73,
-      "fps": 3.6
+      "name": "Hardhat / Helmet",
+      "p": 72.0,
+      "r": 60.8,
+      "f1": 65.9,
+      "map50": 63.0,
+      "instances": 79
+    },
+    {
+      "name": "Safety Vest",
+      "p": 60.6,
+      "r": 48.7,
+      "f1": 54.0,
+      "map50": 50.2,
+      "instances": 41
+    },
+    {
+      "name": "Person",
+      "p": 77.9,
+      "r": 51.1,
+      "f1": 61.7,
+      "map50": 57.6,
+      "instances": 166
+    },
+    {
+      "name": "Mask",
+      "p": 80.9,
+      "r": 61.9,
+      "f1": 70.2,
+      "map50": 68.3,
+      "instances": 21
+    },
+    {
+      "name": "Heavy Machinery",
+      "p": 51.0,
+      "r": 58.2,
+      "f1": 54.4,
+      "map50": 60.2,
+      "instances": 55
+    },
+    {
+      "name": "Vehicle",
+      "p": 37.7,
+      "r": 26.2,
+      "f1": 30.9,
+      "map50": 20.2,
+      "instances": 42
+    }
+  ],
+  "ablation": {
+    "naive_alarms_count": 23,
+    "filtered_alarms_count": 15,
+    "suppression_pct": 34.8,
+    "latency_penalty_frames": 3,
+    "latency_penalty_ms": 120.0
+  },
+  "stress_results": [
+    {
+      "condition": "1. Factory CCTV Stream (Clean)",
+      "data_source": "Real Footage",
+      "avg_latency_ms": 96.7,
+      "fps": 10.3
     },
     {
       "condition": "2. Industrial Dust & Particulates",
-      "precision_pct": 91.8,
-      "recall_pct": 89.6,
-      "f1_score": 90.7,
-      "false_positive_rate": 3.2,
-      "suppression_pct": 93.0,
-      "avg_latency_ms": 140.19,
-      "fps": 7.1
+      "data_source": "Synthetic Pert.",
+      "avg_latency_ms": 99.9,
+      "fps": 10.0
     },
     {
       "condition": "3. High Steam & Thermal Haze",
-      "precision_pct": 88.7,
-      "recall_pct": 87.1,
-      "f1_score": 87.9,
-      "false_positive_rate": 4.1,
-      "suppression_pct": 91.0,
-      "avg_latency_ms": 267.49,
-      "fps": 3.7
+      "data_source": "Synthetic Pert.",
+      "avg_latency_ms": 137.9,
+      "fps": 7.3
     },
     {
       "condition": "4. Low Light / Night Shift (\u03b3=0.45)",
-      "precision_pct": 87.4,
-      "recall_pct": 85.3,
-      "f1_score": 86.3,
-      "false_positive_rate": 4.6,
-      "suppression_pct": 89.9,
-      "avg_latency_ms": 148.99,
-      "fps": 6.7
+      "data_source": "Synthetic Pert.",
+      "avg_latency_ms": 105.2,
+      "fps": 9.5
     },
     {
       "condition": "5. Partial Structural Occlusion",
-      "precision_pct": 86.2,
-      "recall_pct": 84.1,
-      "f1_score": 85.1,
-      "false_positive_rate": 5.0,
-      "suppression_pct": 89.0,
-      "avg_latency_ms": 167.66,
-      "fps": 6.0
+      "data_source": "Synthetic Pert.",
+      "avg_latency_ms": 101.8,
+      "fps": 9.8
     }
   ]
 }

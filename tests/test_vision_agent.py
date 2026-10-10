@@ -1,6 +1,12 @@
+import os
+import sys
 # pyrefly: ignore [missing-import]
 import pytest
 import numpy as np
+
+# Ensure project root is on sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from src.vision_agent import MultiLevelSafetyAgent  # pyrefly: ignore [missing-import]
 
 

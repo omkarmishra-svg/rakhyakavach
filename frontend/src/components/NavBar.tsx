@@ -7,15 +7,12 @@ import {
   Volume2,
   VolumeX,
   Maximize2,
-  Award,
-  Megaphone,
-  Layers,
-  UserCheck
+  Award
 } from 'lucide-react';
 import { PlantTelemetry } from '../types';
 import { soundEngine } from '../utils/audio';
 
-export type NavTab = 'vision' | 'gatekeeper' | 'incidents' | 'analytics';
+export type NavTab = 'vision' | 'incidents' | 'analytics';
 
 interface NavBarProps {
   currentTab: NavTab;
@@ -29,8 +26,7 @@ export const NavBar: React.FC<NavBarProps> = ({
   currentTab,
   onSelectTab,
   telemetry,
-  onOpenOshaModal,
-  onOpenMultiLevelLLM
+  onOpenOshaModal
 }) => {
   const [isMuted, setIsMuted] = React.useState<boolean>(false);
   const [timeStr, setTimeStr] = React.useState<string>('');
@@ -60,14 +56,11 @@ export const NavBar: React.FC<NavBarProps> = ({
     }
   };
 
-  const complianceClass =
-    telemetry.compliance_pct >= 90 ? 'ok' : telemetry.compliance_pct >= 75 ? 'warn' : 'critical';
-
   return (
     <nav className="modern-navbar">
       {/* Brand & Live Indicator */}
       <div className="navbar-brand-section">
-        <div className="navbar-logo-badge">
+        <div className="navbar-logo-badge" title="Raksha Kavach: AI Industrial Safety Sentinel">
           <Shield size={20} className="brand-icon" />
           <div className="brand-text-container">
             <span className="brand-title">RAKSHA KAVACH</span>
@@ -75,47 +68,53 @@ export const NavBar: React.FC<NavBarProps> = ({
           </div>
         </div>
 
-        <div className="live-status-chip">
+        <div className="live-status-chip" title="Live plant telemetry stream connected">
           <span className="live-pulse-dot" />
           <span className="live-label">LIVE</span>
           <span className="live-time">{timeStr}</span>
         </div>
       </div>
 
-      {/* Center Navigation Tabs */}
-      <div className="navbar-tabs">
+      {/* Center Navigation Tabs: Live Vision, Audit Logs, Analytics */}
+      <div className="navbar-tabs" role="tablist">
         <button
+          role="tab"
+          aria-selected={currentTab === 'vision'}
           className={`nav-tab-btn ${currentTab === 'vision' ? 'active' : ''}`}
           onClick={() => onSelectTab('vision')}
+          title="Live Camera Feeds & AI Hazard Monitoring"
         >
-          <Camera size={16} />
+          <Camera size={15} />
           <span>Live Vision</span>
         </button>
 
         <button
-          className={`nav-tab-btn ${currentTab === 'gatekeeper' ? 'active' : ''}`}
-          onClick={() => onSelectTab('gatekeeper')}
-        >
-          <UserCheck size={16} />
-          <span>Smart Airlock Gate</span>
-        </button>
-
-        <button
+          role="tab"
+          aria-selected={currentTab === 'incidents'}
           className={`nav-tab-btn ${currentTab === 'incidents' ? 'active' : ''}`}
           onClick={() => onSelectTab('incidents')}
+          title="Violation History & Audit Incident Records"
         >
-          <FileText size={16} />
+          <FileText size={15} />
           <span>Audit Logs</span>
           {telemetry.active_warnings > 0 && (
-            <span className="tab-pill-badge warn">{telemetry.active_warnings}</span>
+            <span
+              className="tab-pill-badge warn"
+              title={`${telemetry.active_warnings} Active Violations`}
+            >
+              {telemetry.active_warnings}
+            </span>
           )}
         </button>
 
         <button
+          role="tab"
+          aria-selected={currentTab === 'analytics'}
           className={`nav-tab-btn ${currentTab === 'analytics' ? 'active' : ''}`}
           onClick={() => onSelectTab('analytics')}
+          title="OSHA Compliance Metrics, Hazard Heatmaps & Trends"
         >
-          <BarChart2 size={16} />
+          <BarChart2 size={15} />
           <span>Analytics</span>
         </button>
       </div>
@@ -125,97 +124,36 @@ export const NavBar: React.FC<NavBarProps> = ({
         {/* 1-Click Official OSHA Certificate */}
         {onOpenOshaModal && (
           <button
-            className="clean-ctrl-btn primary"
+            className="navbar-cert-btn"
             onClick={onOpenOshaModal}
             title="Generate Official ISO 45001 / OSHA 1910 Plant Audit Certificate"
-            style={{
-              padding: '6px 14px',
-              fontSize: '12px',
-              fontWeight: 700,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: 'linear-gradient(135deg, rgba(0, 230, 118, 0.2), rgba(0, 242, 254, 0.15))',
-              borderColor: 'rgba(0, 230, 118, 0.4)',
-              color: '#00e676',
-              boxShadow: '0 0 12px rgba(0, 230, 118, 0.15)'
-            }}
           >
-            <Award size={14} />
+            <Award size={15} />
             <span>OSHA Certificate</span>
           </button>
         )}
 
-        {/* Multi-Level AI Safety Intelligence Pipeline */}
-        {onOpenMultiLevelLLM && (
+
+        {/* Quick Tools Group: Siren Mute & Fullscreen */}
+        <div className="navbar-quick-tools">
           <button
-            className="clean-ctrl-btn"
-            onClick={onOpenMultiLevelLLM}
-            title="Open Multi-Level Safety Intelligence Architecture & Interactive Reasoner"
-            style={{
-              padding: '6px 14px',
-              fontSize: '12px',
-              fontWeight: 700,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.18), rgba(124, 58, 237, 0.15))',
-              borderColor: 'rgba(0, 242, 254, 0.4)',
-              color: '#00f2fe',
-              boxShadow: '0 0 12px rgba(0, 242, 254, 0.15)'
-            }}
+            className={`icon-action-btn ${isMuted ? 'muted' : 'active'}`}
+            onClick={handleToggleAudio}
+            title={isMuted ? 'Unmute Audio Alarm Siren' : 'Audio Alarm Siren Active (Click to Mute)'}
+            aria-label="Toggle Audio Siren"
           >
-            <Layers size={14} />
-            <span>Multi-Level AI</span>
+            {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
           </button>
-        )}
 
-        {/* Voice PA Announcer Indicator / Test */}
-        <button
-          className="clean-ctrl-btn"
-          onClick={() => {
-            soundEngine.announceViolation('Fabrication Complex', ['Safety Hardhat', 'Reflective Vest']);
-          }}
-          title="Factory Voice PA Dispatcher Active. Click to test PA announcement chime."
-          style={{
-            padding: '5px 10px',
-            fontSize: '11px',
-            fontWeight: 700,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '5px',
-            background: 'rgba(255, 179, 0, 0.12)',
-            borderColor: 'rgba(255, 179, 0, 0.3)',
-            color: '#ffb300'
-          }}
-        >
-          <Megaphone size={12} />
-          <span>VOICE PA ACTIVE</span>
-        </button>
-
-        {/* Compliance Gauge Pill */}
-        <div className={`metric-pill ${complianceClass}`} title="Plant-wide PPE & Hazard Compliance">
-          <span className="metric-pill-label">COMPLIANCE</span>
-          <span className="metric-pill-value">{telemetry.compliance_pct.toFixed(1)}%</span>
+          <button
+            className="icon-action-btn"
+            onClick={handleToggleFullscreen}
+            title="Toggle Fullscreen Mode"
+            aria-label="Toggle Fullscreen"
+          >
+            <Maximize2 size={15} />
+          </button>
         </div>
-
-        {/* Audio Mute/Unmute */}
-        <button
-          className={`icon-action-btn ${isMuted ? 'muted' : 'active'}`}
-          onClick={handleToggleAudio}
-          title={isMuted ? 'Unmute Audio Siren' : 'Siren Active (Click to Mute)'}
-        >
-          {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-        </button>
-
-        {/* Fullscreen */}
-        <button
-          className="icon-action-btn"
-          onClick={handleToggleFullscreen}
-          title="Toggle Fullscreen"
-        >
-          <Maximize2 size={16} />
-        </button>
       </div>
     </nav>
   );

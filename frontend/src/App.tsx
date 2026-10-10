@@ -10,7 +10,8 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { OshaCertificateModal } from './components/OshaCertificateModal';
 import { MultiCameraFeed } from './components/MultiCameraFeed';
 import { MultiLevelSafetyModal } from './components/MultiLevelSafetyModal';
-import { SmartGatekeeperView } from './components/SmartGatekeeperView';
+import { GateSentinelFeed, DEFAULT_ENTRANT, EntrantProfile } from './components/GateSentinelFeed';
+import { GateSentinelSidebar } from './components/GateSentinelSidebar';
 
 import {
   INITIAL_ZONES,
@@ -18,20 +19,21 @@ import {
 } from './data/mockData';
 import { Zone, Incident, IncidentStatus, DetectionItem, PlantTelemetry, HourlyViolation } from './types';
 import { soundEngine } from './utils/audio';
-import { Video, Camera, Radio } from 'lucide-react';
+import { Video, Camera, Radio, UserCheck } from 'lucide-react';
 
 /* ----------------------------------------------------------------
    Surveillance Feed Matrix:
-   CAM 01: Dedicated Live Hardware Webcam for on-stage judge demonstrations.
-   CCTV 01 - 03: Industrial factory CCTV streams with real AI detection.
-   GATE 01: Smart Airlock & Turnstile Access Control Sentinel.
+   CCTV 01: Main Fabrication Bay (Heavy machinery & welding).
+   CCTV 02: Logistics Dock B (Active Fire & Smoke Hazard Guard).
+   CCTV 03: Warehouse & Robotics (Automated machinery cell).
+   GATE 01: Smart Airlock Gate 1 (PPE Screening & Contraband Sentinel).
    ---------------------------------------------------------------- */
 interface CameraItem {
   id: number;
   camCode: string;
   name: string;
   zoneName: string;
-  type: 'cctv' | 'webcam' | 'video';
+  type: 'cctv' | 'webcam' | 'video' | 'gate';
   videoSrc: string;
   zoneId: string;
 }
@@ -39,39 +41,39 @@ interface CameraItem {
 const CAMERAS: CameraItem[] = [
   {
     id: 1,
-    camCode: 'CAM 01',
-    name: 'Operator Live Sentinel',
-    zoneName: 'Hardware Webcam Stream',
-    type: 'webcam',
-    videoSrc: '',
-    zoneId: 'zone_4'
-  },
-  {
-    id: 2,
     camCode: 'CCTV 01',
     name: 'Main Fabrication Bay',
-    zoneName: 'Welding & Heavy Machinery',
+    zoneName: 'Zone 1 - High Hazard Work Bay',
     type: 'cctv',
     videoSrc: '/data/cctv_bay1.mp4',
     zoneId: 'zone_1'
   },
   {
-    id: 3,
+    id: 2,
     camCode: 'CCTV 02',
-    name: 'Logistics & Loading Dock',
-    zoneName: 'Dock B & Freight Staging',
+    name: 'Logistics Dock B (Active Fire/Smoke)',
+    zoneName: 'Zone 2 - Environmental Hazard Cell',
     type: 'cctv',
     videoSrc: '/data/cctv_bay2.mp4',
     zoneId: 'zone_2'
   },
   {
-    id: 4,
+    id: 3,
     camCode: 'CCTV 03',
-    name: 'Warehouse & Robotics',
-    zoneName: 'High-Bay Staging Depot',
+    name: 'Warehouse & Robotics Depot',
+    zoneName: 'Zone 3 - Automated Machinery Cell',
     type: 'cctv',
     videoSrc: '/data/cctv_bay3.mp4',
-    zoneId: 'zone_5'
+    zoneId: 'zone_3'
+  },
+  {
+    id: 4,
+    camCode: 'GATE 01',
+    name: 'Airlock Gate 1 (Entry Sentinel)',
+    zoneName: 'Primary Access & PPE Screening Checkpoint',
+    type: 'gate',
+    videoSrc: '',
+    zoneId: 'zone_gate'
   }
 ];
 
@@ -89,9 +91,9 @@ export const App: React.FC = () => {
   const [isMultiLevelModalOpen, setIsMultiLevelModalOpen] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'focus' | 'matrix'>('focus');
 
-  // Active single camera stream (defaults to CCTV 01 for instant live demo)
-  const [activeCamId, setActiveCamId] = useState<number>(2);
-  const activeCam = CAMERAS.find((c) => c.id === activeCamId) || CAMERAS[1];
+  // Active single camera stream (defaults to GATE 01 for instant live entry demo)
+  const [activeCamId, setActiveCamId] = useState<number>(4);
+  const activeCam = CAMERAS.find((c) => c.id === activeCamId) || CAMERAS[3];
 
   // Video / webcam states
   const [isWebcamActive, setIsWebcamActive] = useState<boolean>(false);
@@ -102,6 +104,116 @@ export const App: React.FC = () => {
   const [latestWorkers, setLatestWorkers] = useState<WorkerAlertItem[]>([]);
   const [hasHazard, setHasHazard] = useState<boolean>(false);
   const [hazardInfo, setHazardInfo] = useState<string>('');
+
+  // Gate 01 Entrant State & Interactive Handlers (Integrated Live Vision Sentinel)
+  const [gateEntrant, setGateEntrant] = useState<EntrantProfile>(DEFAULT_ENTRANT);
+
+  const handleGateToggleGear = (gearKey: string) => {
+    const isWorn = gateEntrant.worn_ppe.includes(gearKey);
+    const newWorn = isWorn
+      ? gateEntrant.worn_ppe.filter((g) => g !== gearKey)
+      : [...gateEntrant.worn_ppe, gearKey];
+    const newMissing = gateEntrant.required_ppe.filter((r) => !newWorn.includes(r));
+
+    let status: 'ENTERED' | 'PARTIAL_REROUTE' | 'ACCESS_DENIED' | 'SECURITY_INTERCEPT';
+    let unlocked = false;
+    let msg = '';
+
+    if (gateEntrant.contraband.length > 0) {
+      status = 'SECURITY_INTERCEPT';
+      unlocked = false;
+      msg = `PROHIBITED ITEM DETECTED: ${gateEntrant.contraband.join(', ').toUpperCase()} // SECURITY DISPATCHED`;
+    } else if (newWorn.length === gateEntrant.required_ppe.length) {
+      status = 'ENTERED';
+      unlocked = true;
+      msg = 'ALL REQUIRED PPE EQUIPPED // TURNSTILE UNLOCKED // PROCEED TO FABRICATION BAY';
+    } else if (newWorn.length > 0) {
+      status = 'PARTIAL_REROUTE';
+      unlocked = true;
+      msg = `PARTIAL PPE DETECTED (MISSING ${newMissing.join(', ').toUpperCase()}) // REASSIGNED TO LOGISTICS BAY (CCTV 02)`;
+    } else {
+      status = 'ACCESS_DENIED';
+      unlocked = false;
+      msg = 'CRITICAL: NO PPE DETECTED // TURNSTILE LOCKED // DIRECT TO DISPENSER';
+    }
+
+    setGateEntrant((prev) => ({
+      ...prev,
+      worn_ppe: newWorn,
+      missing_ppe: newMissing,
+      access_status: status,
+      turnstile_unlocked: unlocked,
+      decision_message: msg
+    }));
+
+    if (unlocked) {
+      soundEngine.playChime();
+    } else {
+      soundEngine.playWarnBeep();
+    }
+  };
+
+  const handleGateToggleContraband = (itemKey: string) => {
+    const hasItem = gateEntrant.contraband.includes(itemKey);
+    const newContraband = hasItem
+      ? gateEntrant.contraband.filter((c) => c !== itemKey)
+      : [...gateEntrant.contraband, itemKey];
+
+    let status: 'ENTERED' | 'PARTIAL_REROUTE' | 'ACCESS_DENIED' | 'SECURITY_INTERCEPT';
+    let unlocked = false;
+    let msg = '';
+
+    if (newContraband.length > 0) {
+      status = 'SECURITY_INTERCEPT';
+      unlocked = false;
+      msg = `PROHIBITED ITEM DETECTED: ${newContraband.join(', ').toUpperCase()} // TURNSTILE LOCKED DOWN`;
+      soundEngine.playCriticalSiren();
+    } else {
+      if (gateEntrant.worn_ppe.length === gateEntrant.required_ppe.length) {
+        status = 'ENTERED';
+        unlocked = true;
+        msg = 'ALL REQUIRED PPE EQUIPPED // TURNSTILE UNLOCKED';
+        soundEngine.playChime();
+      } else if (gateEntrant.worn_ppe.length > 0) {
+        status = 'PARTIAL_REROUTE';
+        unlocked = true;
+        msg = 'PARTIAL PPE DETECTED // REASSIGNED TO LOGISTICS BAY (CCTV 02)';
+        soundEngine.playChime();
+      } else {
+        status = 'ACCESS_DENIED';
+        unlocked = false;
+        msg = 'CRITICAL: NO PPE DETECTED // TURNSTILE LOCKED';
+        soundEngine.playWarnBeep();
+      }
+    }
+
+    setGateEntrant((prev) => ({
+      ...prev,
+      contraband: newContraband,
+      access_status: status,
+      turnstile_unlocked: unlocked,
+      decision_message: msg
+    }));
+  };
+
+  const handleGateRandomizePersona = () => {
+    const PERSONA_POOL = [
+      { name: 'Rajesh Kumar', emp_id: 'EMP-4109', role: 'Senior Plant Technician', dept: 'Main Electrical & Substation Bay' },
+      { name: 'Amit Sharma', emp_id: 'EMP-7821', role: 'Arc Welding Specialist', dept: 'Structural Fabrication Unit' },
+      { name: 'Pooja Verma', emp_id: 'EMP-3204', role: 'Robotics Automation Engineer', dept: 'Automated Machinery Cell' },
+      { name: 'Suresh Patel', emp_id: 'EMP-9055', role: 'Logistics Operations Lead', dept: 'Freight Staging & Loading Dock' },
+      { name: 'Vikram Singh', emp_id: 'EMP-6112', role: 'High-Voltage Switchgear Tech', dept: 'Transmission Line Grid' }
+    ];
+    const nextP = PERSONA_POOL[Math.floor(Math.random() * PERSONA_POOL.length)];
+    setGateEntrant((prev) => ({
+      ...prev,
+      name: nextP.name,
+      emp_id: nextP.emp_id,
+      role: nextP.role,
+      department: nextP.dept
+    }));
+    soundEngine.playChime();
+  };
 
   const activeZone = zones.find((z) => z.zone_id === activeCam.zoneId) || zones[0];
 
@@ -153,7 +265,7 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [loadDatabaseIncidents, loadDatabaseAnalytics]);
 
-  // Switch camera: seamless toggle between Webcam and CCTV
+  // Switch camera: seamless toggle between Gate Sentinel, Webcam and CCTV
   const handleSwitchCamera = (camId: number) => {
     const cam = CAMERAS.find((c) => c.id === camId);
     if (!cam) return;
@@ -162,6 +274,9 @@ export const App: React.FC = () => {
     if (cam.type === 'webcam') {
       setIsWebcamActive(true);
       setActiveVideoName('Live Webcam Feed');
+    } else if (cam.type === 'gate') {
+      setIsWebcamActive(false);
+      setActiveVideoName('Airlock Gate 1 (Entry Sentinel)');
     } else {
       setIsWebcamActive(false);
       setActiveVideoSrc(cam.videoSrc || '/data/cctv_bay1.mp4');
@@ -420,7 +535,11 @@ export const App: React.FC = () => {
 
                       <div className="cam-card-footer">
                         <span className="cam-type-badge">
-                          {cam.type === 'webcam' ? (
+                          {cam.type === 'gate' ? (
+                            <>
+                              <UserCheck size={11} style={{ marginRight: '3px' }} /> AIRLOCK GATE
+                            </>
+                          ) : cam.type === 'webcam' ? (
                             <>
                               <Camera size={11} style={{ marginRight: '3px' }} /> WEBCAM
                             </>
@@ -463,11 +582,22 @@ export const App: React.FC = () => {
                     }
                   }}
                   configs={[
-                    { id: 1, name: 'CAM 01: Operator Live Sentinel', type: 'webcam', source: '' },
-                    { id: 2, name: 'CCTV 01: Fabrication Bay', type: 'cctv', source: '/data/cctv_bay1.mp4' },
-                    { id: 3, name: 'CCTV 02: Logistics & Freight Dock', type: 'cctv', source: '/data/cctv_bay2.mp4' },
-                    { id: 4, name: 'CCTV 03: High-Bay Robotics Depot', type: 'cctv', source: '/data/cctv_bay3.mp4' }
+                    { id: 1, name: 'CCTV 01: Fabrication Bay', type: 'cctv', source: '/data/cctv_bay1.mp4' },
+                    { id: 2, name: 'CCTV 02: Logistics & Fire Guard', type: 'cctv', source: '/data/cctv_bay2.mp4' },
+                    { id: 3, name: 'CCTV 03: Robotics Depot', type: 'cctv', source: '/data/cctv_bay3.mp4' },
+                    { id: 4, name: 'GATE 01: Airlock Entry Sentinel', type: 'webcam', source: '' }
                   ]}
+                />
+              ) : activeCamId === 4 ? (
+                <GateSentinelFeed
+                  entrant={gateEntrant}
+                  onEntrantUpdate={setGateEntrant}
+                  onProceedToMonitoring={(targetCamId) => {
+                    handleSwitchCamera(targetCamId || 2);
+                  }}
+                  onToggleGear={handleGateToggleGear}
+                  onToggleContraband={handleGateToggleContraband}
+                  onRandomizePersona={handleGateRandomizePersona}
                 />
               ) : (
                 <HeroLiveFeed
@@ -478,28 +608,40 @@ export const App: React.FC = () => {
                   activeVideoSrc={activeVideoSrc}
                   activeVideoName={activeVideoName}
                   onToggleWebcam={handleToggleWebcam}
-                  onSelectCamera={(camId) => {
-                    const match = CAMERAS.find((c) => c.camCode.includes(camId));
+                  onSelectCamera={(camCode) => {
+                    const match = CAMERAS.find((c) => c.camCode.includes(camCode) || camCode.includes(c.camCode));
                     if (match) handleSwitchCamera(match.id);
                   }}
                   onSelectDetection={handleSelectDetection}
                   onOpenSourceModal={() => setIsSourceModalOpen(true)}
                   onNewIncidentDetected={handleNewIncidentDetected}
-                  onSelectLiveCamera={() => handleSwitchCamera(1)}
-                  onSelectCCTV={() => handleSwitchCamera(2)}
+                  onSelectLiveCamera={() => handleSwitchCamera(4)}
+                  onSelectCCTV={() => handleSwitchCamera(1)}
                   onInferenceWorkers={handleInferenceWorkers}
                   onHazardDetected={handleHazardDetected}
                 />
               )}
             </div>
 
-            {/* Right Sidebar: Real-time Square Alert Grid */}
+            {/* Right Sidebar: Real-time Square Alert Grid OR Gate Sentinel Inspector */}
             <aside className="alerts-sidebar">
-              <SquareAlertGrid
-                workers={latestWorkers}
-                hasHazard={hasHazard}
-                hazardInfo={hazardInfo || `Surveillance anomaly on ${activeCam.camCode}`}
-              />
+              {activeCamId === 4 ? (
+                <GateSentinelSidebar
+                  entrant={gateEntrant}
+                  onToggleGear={handleGateToggleGear}
+                  onToggleContraband={handleGateToggleContraband}
+                  onRandomizePersona={handleGateRandomizePersona}
+                  onProceedToMonitoring={(targetCamId) => {
+                    handleSwitchCamera(targetCamId || 2);
+                  }}
+                />
+              ) : (
+                <SquareAlertGrid
+                  workers={latestWorkers}
+                  hasHazard={hasHazard}
+                  hazardInfo={hazardInfo || `Surveillance anomaly on ${activeCam.camCode}`}
+                />
+              )}
             </aside>
           </main>
 
@@ -513,14 +655,7 @@ export const App: React.FC = () => {
         </>
       )}
 
-      {/* 2. SMART AIRLOCK & GATE 1 ACCESS TAB */}
-      {currentTab === 'gatekeeper' && (
-        <div className="tab-stage">
-          <SmartGatekeeperView />
-        </div>
-      )}
-
-      {/* 3. AUDIT LOGS TAB */}
+      {/* 2. AUDIT LOGS TAB */}
       {currentTab === 'incidents' && (
         <div className="tab-stage">
           <IncidentsView

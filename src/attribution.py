@@ -50,9 +50,18 @@ class SpatialAttributor:
     # Gear category normalizations
     HELMET_ALIASES = {"helmet", "hardhat", "hard_hat", "hard-hat", "hat", "cap"}
     VEST_ALIASES = {"vest", "safety_vest", "safety-vest", "safety vest", "reflective_jacket"}
-    BOOTS_ALIASES = {"boots", "safety_boots", "shoes"}
-    GLOVES_ALIASES = {"gloves", "safety_gloves"}
-    GOGGLES_ALIASES = {"goggles", "safety_glasses", "mask"}
+    BOOTS_ALIASES = {"boots", "safety_boots", "shoes", "steel_toe_boots"}
+    GLOVES_ALIASES = {"gloves", "safety_gloves", "work_gloves"}
+    GOGGLES_ALIASES = {"goggles", "safety_glasses", "mask", "dust_mask"}
+    HARNESS_ALIASES = {"safety_harness", "harness", "fall_arrest"}
+    WELDING_ALIASES = {"welding_shield", "welding_mask", "face_shield"}
+
+    # Chemical Engineering & Hazmat Aliases
+    CHEM_SUIT_ALIASES = {"chemical_suit", "hazmat_suit", "chemical_apron", "tychem_suit"}
+    CHEM_RESP_ALIASES = {"chemical_respirator", "respirator", "gas_mask", "cartridge_respirator"}
+    CHEM_GLOVES_ALIASES = {"chemical_gloves", "nitrile_gloves", "butyl_gloves"}
+    CHEM_BOOTS_ALIASES = {"chemical_boots", "gumboots", "acid_boots"}
+    SCBA_ALIASES = {"scba", "scba_pack", "breathing_apparatus"}
 
     # Explicit negative classes in trained dataset
     NEGATIVE_ALIASES = {
@@ -63,6 +72,11 @@ class SpatialAttributor:
         "no_vest": "vest",
         "without_vest": "vest",
         "no_mask": "goggles",
+        "no_gloves": "gloves",
+        "no_boots": "boots",
+        "no_respirator": "chemical_respirator",
+        "no_chemical_suit": "chemical_suit",
+        "no_harness": "safety_harness",
     }
 
     def __init__(self, min_containment_threshold: float = 0.08):
@@ -94,6 +108,20 @@ class SpatialAttributor:
             return "gloves"
         if name in {a.replace("-", "_").replace(" ", "_") for a in cls.GOGGLES_ALIASES}:
             return "goggles"
+        if name in {a.replace("-", "_").replace(" ", "_") for a in cls.HARNESS_ALIASES}:
+            return "safety_harness"
+        if name in {a.replace("-", "_").replace(" ", "_") for a in cls.WELDING_ALIASES}:
+            return "welding_shield"
+        if name in {a.replace("-", "_").replace(" ", "_") for a in cls.CHEM_SUIT_ALIASES}:
+            return "chemical_suit"
+        if name in {a.replace("-", "_").replace(" ", "_") for a in cls.CHEM_RESP_ALIASES}:
+            return "chemical_respirator"
+        if name in {a.replace("-", "_").replace(" ", "_") for a in cls.CHEM_GLOVES_ALIASES}:
+            return "chemical_gloves"
+        if name in {a.replace("-", "_").replace(" ", "_") for a in cls.CHEM_BOOTS_ALIASES}:
+            return "chemical_boots"
+        if name in {a.replace("-", "_").replace(" ", "_") for a in cls.SCBA_ALIASES}:
+            return "scba"
         return None
 
     @classmethod
@@ -172,12 +200,14 @@ class SpatialAttributor:
                     c_head_h = 0.45 if c_ar < 1.6 else (0.38 if c_ar < 2.2 else 0.32)
 
                     target_zone = w_cand.box
-                    if effective_gear in {"helmet", "goggles"}:
+                    if effective_gear in {"helmet", "goggles", "chemical_respirator", "welding_shield"}:
                         target_zone = [cx1, cy1, cx2, cy1 + int(c_h * c_head_h)]
-                    elif effective_gear == "vest":
-                        target_zone = [cx1, cy1 + int(c_h * 0.16), cx2, cy1 + int(c_h * 0.82)]
-                    elif effective_gear == "boots":
-                        target_zone = [cx1, cy1 + int(c_h * 0.62), cx2, cy2]
+                    elif effective_gear in {"vest", "chemical_suit", "safety_harness", "scba"}:
+                        target_zone = [cx1, cy1 + int(c_h * 0.16), cx2, cy1 + int(c_h * 0.85)]
+                    elif effective_gear in {"boots", "chemical_boots"}:
+                        target_zone = [cx1, cy1 + int(c_h * 0.60), cx2, cy2]
+                    elif effective_gear in {"gloves", "chemical_gloves"}:
+                        target_zone = [max(0, cx1 - 25), cy1 + int(c_h * 0.35), cx2 + 25, cy1 + int(c_h * 0.85)]
 
                     inter_area = self._compute_intersection_area(gear.box, target_zone)
                     gear_area = max(1.0, float(gear.width * gear.height))

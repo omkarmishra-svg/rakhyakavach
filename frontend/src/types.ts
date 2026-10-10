@@ -40,7 +40,7 @@ export interface Incident {
   is_executive?: boolean;
   shield_admin_block?: boolean;
   contraband_detected?: string[];
-  access_status?: 'ENTERED' | 'ACCESS_DENIED' | 'SECURITY_INTERCEPT';
+  access_status?: 'ENTERED' | 'PARTIAL_REROUTE' | 'ACCESS_DENIED' | 'SECURITY_INTERCEPT';
   snapshot_path: string;
   status: IncidentStatus;
   acknowledged_by?: string;
@@ -56,8 +56,9 @@ export interface GateLogEntry {
   role: string;
   department: string;
   destination_department?: string;
+  suggested_department?: string;
   is_executive: boolean;
-  access_status: 'ENTERED' | 'ACCESS_DENIED' | 'SECURITY_INTERCEPT';
+  access_status: 'ENTERED' | 'PARTIAL_REROUTE' | 'ACCESS_DENIED' | 'SECURITY_INTERCEPT';
   turnstile_unlocked: boolean;
   required_ppe: string[];
   worn_ppe: string[];

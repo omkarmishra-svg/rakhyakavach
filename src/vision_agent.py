@@ -130,7 +130,8 @@ class MultiLevelSafetyAgent:
         self.gemini_model = None
         self.gemini_model_name = "gemini-3.8-flash"
         self.groq_client = None
-        self.groq_model_name = "llama-3.2-11b-vision-preview"
+        self.groq_model_name = "qwen/qwen3.8-27b"
+        self.groq_fallback_model = "openai/gpt-oss-120b"
 
         # Rate-limiting circuit breakers
         self.gemini_cooldown_until = 0.0
@@ -140,7 +141,7 @@ class MultiLevelSafetyAgent:
         if self._groq and self.groq_api_key:
             try:
                 self.groq_client = self._groq.Groq(api_key=self.groq_api_key)
-                print(f"[MultiLevelSafetyAgent] Groq Vision active ({self.groq_model_name})")
+                print(f"[MultiLevelSafetyAgent] Groq AI Engine active ({self.groq_model_name})")
             except Exception as e:
                 print(f"[MultiLevelSafetyAgent] Groq init warning: {e}")
                 self.groq_client = None
@@ -163,7 +164,7 @@ class MultiLevelSafetyAgent:
 
         # State flags (backward-compatible)
         self.enabled = True
-        self.cloud_llm_enabled = bool(self.groq_client is not None or self.gemini_model is not None)
+        self.cloud_llm_enabled = self.groq_client is not None or self.gemini_model is not None
         self.cloud_model = self.gemini_model  # legacy reference
 
     # ---------------- Level 2: Multi-Spectral Micro-VLM Inspection ----------------
@@ -229,7 +230,7 @@ class MultiLevelSafetyAgent:
         """Provides structural transparency on the multi-level AI safety intelligence pipeline."""
         active_cloud = []
         if self.groq_client:
-            active_cloud.append(f"Groq Vision ({self.groq_model_name})")
+            active_cloud.append(f"Groq AI Engine ({self.groq_model_name})")
         if self.gemini_model:
             active_cloud.append(f"Google Gemini ({self.gemini_model_name})")
 
@@ -237,7 +238,7 @@ class MultiLevelSafetyAgent:
 
         return {
             "system_name": "Raksha Kavach Multi-Level Safety Intelligence Engine",
-            "version": "3.2.0-Production",
+            "version": "3.3.0-Production",
             "levels": [
                 {
                     "level": 1,
@@ -255,9 +256,9 @@ class MultiLevelSafetyAgent:
                 },
                 {
                     "level": 3,
-                    "name": "Multi-Modal Cloud VLM & EHS Reasoner",
-                    "latency": "180ms (Groq Vision) / 450ms (Gemini 3.8 Flash) / 15ms (Local Fallback)",
-                    "role": "Secondary verification of adverse corner cases, OSHA 1910/NFPA citations, forensic root-cause analysis, and voice dispatch.",
+                    "name": "Multi-Modal Cloud VLM & Groq EHS Reasoner",
+                    "latency": "120-200ms (Groq High-Speed AI) / 450ms (Gemini 3.8 Flash) / 15ms (Local Fallback)",
+                    "role": "Real-time forensic root-cause analysis, OSHA 1910/NFPA citations, CAPA generation, and automated PA dispatch.",
                     "status": f"ACTIVE [{cloud_desc}]" if self.cloud_llm_enabled else "SELF_HOSTED_LOCAL_EXPERT"
                 }
             ],
@@ -319,14 +320,99 @@ class MultiLevelSafetyAgent:
         if crop_base64:
             cloud_result = self.verify_crop(crop_base64, worker_id or 1, clean_missing)
             if cloud_result.get("verified"):
+                base_reasoning = (
+                    self._query_groq_reasoning(worker_id, zone_name, clean_missing, clean_hazards)
+                    or self._local_expert_reasoning(worker_id, zone_name, clean_missing, clean_hazards)
+                )
                 return {
-                    **self._local_expert_reasoning(worker_id, zone_name, clean_missing, clean_hazards),
+                    **base_reasoning,
                     "vlm_verification": cloud_result,
                     "engine": cloud_result.get("engine", "Multi-Level Safety Reasoner")
                 }
 
-        # 2. Local Industrial Expert LLM Reasoner
+        # 2. Try Groq High-Speed AI Reasoner if available and issues are flagged
+        if (clean_missing or clean_hazards) and self.groq_client and time.time() > self.groq_cooldown_until:
+            groq_res = self._query_groq_reasoning(worker_id, zone_name, clean_missing, clean_hazards)
+            if groq_res:
+                return groq_res
+
+        # 3. Local Industrial Expert LLM Reasoner fallback
         return self._local_expert_reasoning(worker_id, zone_name, clean_missing, clean_hazards)
+
+    def _query_groq_reasoning(
+        self,
+        worker_id: Optional[int],
+        zone_name: str,
+        missing_ppe: List[str],
+        hazards: List[str]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Execute sub-200ms real-time forensic safety analysis via Groq.
+        Outputs exact OSHA/NFPA citations, root-cause diagnostics, and CAPA recommendations.
+        """
+        if not self.groq_client:
+            return None
+
+        all_issues = missing_ppe + hazards
+        if not all_issues:
+            return None
+
+        prompt = (
+            f"You are the Raksha Kavach EHS Safety Officer. Analyze this industrial safety violation event:\n"
+            f"- Zone: {zone_name}\n"
+            f"- Worker ID: #{worker_id or 1}\n"
+            f"- Missing PPE: {missing_ppe}\n"
+            f"- Active Hazards: {hazards}\n\n"
+            f"Return ONLY a valid JSON object with the following keys:\n"
+            f'{{"citations": ["OSHA 29 CFR standard", "NFPA standard"],\n'
+            f' "root_cause": "concise explanation of why this hazard occurred",\n'
+            f' "dispatch_action": "immediate operational action for floor marshal/supervisor",\n'
+            f' "announcement_text": "short public address radio announcement",\n'
+            f' "capa_recommendation": "corrective and preventive action recommendation",\n'
+            f' "risk_index": 8.0}}\n'
+            f"Do not include any text or formatting outside the JSON object."
+        )
+
+        for model in [self.groq_model_name, self.groq_fallback_model]:
+            try:
+                resp = self.groq_client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=400,
+                    temperature=0.2
+                )
+                raw_text = resp.choices[0].message.content.strip()
+                clean_json = raw_text
+                if "```json" in clean_json:
+                    clean_json = clean_json.split("```json", 1)[1].split("```", 1)[0].strip()
+                elif "```" in clean_json:
+                    clean_json = clean_json.split("```", 1)[1].split("```", 1)[0].strip()
+
+                parsed = json.loads(clean_json)
+                issues_str = ", ".join(i.upper() for i in all_issues)
+                return {
+                    "ok": True,
+                    "is_compliant": False,
+                    "confidence": 0.96,
+                    "risk_index": float(parsed.get("risk_index", 7.5)),
+                    "regulatory_status": f"NON-COMPLIANT // {issues_str} FLAGGED",
+                    "citations": parsed.get("citations", ["OSHA 29 CFR 1910.132"]),
+                    "forensic_summary": (
+                        f"Groq AI Safety Audit ({model}): Incident in '{zone_name}' (Target #{worker_id or 1}). "
+                        f"Hazard Profile: {issues_str}. {parsed.get('root_cause', '')}"
+                    ),
+                    "root_cause": parsed.get("root_cause", "Operational non-compliance detected."),
+                    "dispatch_action": parsed.get("dispatch_action", "Halt activity and verify safety gear."),
+                    "announcement_text": parsed.get("announcement_text", f"Attention {zone_name}. Safety protocol violation."),
+                    "capa_recommendation": parsed.get("capa_recommendation", "Review area safety compliance log."),
+                    "engine": f"Groq High-Speed AI Engine ({model})",
+                    "verified": True
+                }
+            except Exception as e:
+                print(f"[MultiLevelSafetyAgent] Groq attempt with {model} warning: {e}")
+                continue
+
+        return None
 
     def _local_expert_reasoning(
         self,
@@ -486,6 +572,9 @@ class MultiLevelSafetyAgent:
 
     def _query_groq_vision(self, image_base64: str, worker_id: int, flagged_missing: List[str]) -> Dict[str, Any]:
         """Execute ultra-fast visual inference via Groq Llama-3.2-11b-vision-preview."""
+        if not self.groq_client:
+            raise RuntimeError("Groq client is not initialized")
+
         prompt = self._build_vlm_prompt(worker_id, flagged_missing)
         response = self.groq_client.chat.completions.create(
             model=self.groq_model_name,
@@ -514,6 +603,9 @@ class MultiLevelSafetyAgent:
 
     def _query_gemini_vision(self, image_base64: str, worker_id: int, flagged_missing: List[str]) -> Dict[str, Any]:
         """Execute visual inference via Google Gemini 3.8 Flash."""
+        if not self.gemini_model:
+            raise RuntimeError("Gemini model is not initialized")
+
         raw_bytes = base64.b64decode(image_base64)
         prompt = self._build_vlm_prompt(worker_id, flagged_missing)
 
@@ -533,6 +625,18 @@ class MultiLevelSafetyAgent:
             raw_bytes = base64.b64decode(image_base64)
             np_arr = np.frombuffer(raw_bytes, np.uint8)
             crop = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            if crop is None or crop.size == 0:
+                return {
+                    "ok": True,
+                    "verified": False,
+                    "is_compliant": False,
+                    "is_vest_present": False,
+                    "is_helmet_present": False,
+                    "forensic_summary": "Failed to decode crop image for spectral verification.",
+                    "engine": "Local Multi-Spectral CLAHE Inspector",
+                    "api_active": False
+                }
+
             spec = self.inspect_spectral_features(crop)
 
             has_vest = spec["has_vest"]

@@ -69,8 +69,8 @@ if os.path.isdir(DATA_DIR):
 DB_PATH = os.path.join(DATA_DIR, "incidents.db")
 zone_manager = ZoneManager()
 
-# Initialize AI pipeline
-pipeline = SafetyPipeline(sample_rate=1, ppe_conf_threshold=0.20)
+# Initialize AI pipeline with high-sensitivity fire/smoke and PPE thresholds
+pipeline = SafetyPipeline(sample_rate=1, ppe_conf_threshold=0.20, fire_conf_threshold=0.22)
 
 
 def get_db():
@@ -609,9 +609,10 @@ def analyze_frame(req: FrameAnalysisRequest):
 
         h, w, _ = frame.shape
 
-        # Run detection and spatial attribution
+        # Run detection and spatial attribution with camera-specific PPE rules
+        req_ppe = set(p.lower().strip() for p in req.required_ppe) if req.required_ppe else None
         # pyrefly: ignore [bad-argument-type]
-        annotated, summary = pipeline.process_frame(frame, camera_id=req.camera_id)
+        annotated, summary = pipeline.process_frame(frame, camera_id=req.camera_id, required_ppe=req_ppe)
 
         # Format worker detections with normalized percentage bounding boxes [0..100]
         detected_workers = []
@@ -904,37 +905,111 @@ def scan_gate_live(req: GateScanRequest):
         track_id = req.track_id or 1
         emp_id = req.emp_id_override
 
-        # If a live image was provided and detected_ppe was not explicitly supplied, run YOLOv8
-        if frame is not None and len(detected_ppe) == 0:
+        # If a live image was provided, run YOLOv8 for person tracking and PPE
+        person_detected = False
+        person_box = None
+        norm_box = None
+
+        if frame is not None:
+            h, w = frame.shape[:2]
             ppe_dets = pipeline.ppe_detector.detect(frame)
+
+            # Find person bounding boxes
+            persons = [d for d in ppe_dets if d.class_name == "person"]
+            if persons:
+                primary = max(persons, key=lambda p: (p.box[2] - p.box[0]) * (p.box[3] - p.box[1]))
+                bx1, by1, bx2, by2 = primary.box
+                person_detected = True
+                person_box = [bx1, by1, bx2, by2]
+                norm_box = [
+                    round((bx1 / w) * 100, 2),
+                    round((by1 / h) * 100, 2),
+                    round((bx2 / w) * 100, 2),
+                    round((by2 / h) * 100, 2)
+                ]
+            else:
+                # Fallback: check if gear detected to infer person location
+                gear_dets = [d for d in ppe_dets if d.class_name in ("vest", "safety_vest", "safety-vest", "hardhat", "helmet", "boots")]
+                if gear_dets:
+                    gx1 = max(0, min(d.box[0] for d in gear_dets) - 30)
+                    gy1 = max(0, min(d.box[1] for d in gear_dets) - 40)
+                    gx2 = min(w, max(d.box[2] for d in gear_dets) + 30)
+                    gy2 = min(h, max(d.box[3] for d in gear_dets) + 120)
+                    person_detected = True
+                    person_box = [gx1, gy1, gx2, gy2]
+                    norm_box = [
+                        round((gx1 / w) * 100, 2),
+                        round((gy1 / h) * 100, 2),
+                        round((gx2 / w) * 100, 2),
+                        round((gy2 / h) * 100, 2)
+                    ]
+
+            # Populate detected_ppe and gear_boxes for frontend HUD rendering
+            gear_boxes = []
             for d in ppe_dets:
                 cls_name = d.class_name.lower().replace("-", "_").replace(" ", "_")
+                gx1, gy1, gx2, gy2 = d.box
+                norm_gbox = [
+                    round((gx1 / w) * 100, 2),
+                    round((gy1 / h) * 100, 2),
+                    round((gx2 / w) * 100, 2),
+                    round((gy2 / h) * 100, 2),
+                ]
+                mapped_name = None
                 if "hardhat" in cls_name or "helmet" in cls_name:
-                    if "no" not in cls_name and "helmet" not in detected_ppe:
-                        detected_ppe.append("helmet")
+                    if "no" not in cls_name:
+                        mapped_name = "helmet"
+                        if "helmet" not in detected_ppe:
+                            detected_ppe.append("helmet")
                 elif "vest" in cls_name:
-                    if "no" not in cls_name and "vest" not in detected_ppe:
-                        detected_ppe.append("vest")
+                    if "no" not in cls_name:
+                        mapped_name = "vest"
+                        if "vest" not in detected_ppe:
+                            detected_ppe.append("vest")
                 elif "glove" in cls_name:
-                    if "no" not in cls_name and "gloves" not in detected_ppe:
-                        detected_ppe.append("gloves")
+                    if "no" not in cls_name:
+                        mapped_name = "gloves"
+                        if "gloves" not in detected_ppe:
+                            detected_ppe.append("gloves")
                 elif "goggle" in cls_name or "glass" in cls_name:
+                    mapped_name = "goggles"
                     if "goggles" not in detected_ppe:
                         detected_ppe.append("goggles")
                 elif "boot" in cls_name or "shoe" in cls_name:
+                    mapped_name = "boots"
                     if "boots" not in detected_ppe:
                         detected_ppe.append("boots")
+
+                if mapped_name:
+                    gear_boxes.append({
+                        "gear": mapped_name,
+                        "box": norm_gbox,
+                        "confidence": round(d.confidence, 2)
+                    })
+        else:
+            gear_boxes = []
+
+        should_assign_random = bool(req.assign_random)
+        if person_detected and (req.assign_random or not emp_id):
+            should_assign_random = True
 
         res = smart_entry_gatekeeper.evaluate_entry(
             frame=frame,
             crop_base64=req.crop_base64,
             detected_ppe=detected_ppe,
             track_id=track_id,
-            emp_id_override=emp_id,
-            assign_random=bool(req.assign_random),
+            emp_id_override=emp_id if not should_assign_random else None,
+            assign_random=should_assign_random,
             manual_contraband_check=req.manual_contraband or []
         )
-        return {"ok": True, **res}
+        return {
+            "ok": True,
+            "person_detected": person_detected,
+            "box": person_box,
+            "norm_box": norm_box,
+            "gear_boxes": gear_boxes,
+            **res
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -966,6 +1041,57 @@ def get_personnel_registry():
     try:
         from src.personnel_registry import personnel_registry
         return {"ok": True, "profiles": personnel_registry.list_all_profiles()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+class SupervisorOverrideRequest(BaseModel):
+    supervisor_id: str = "SUP-701"
+    entrant_name: str = "Emergency Repair Personnel"
+    entrant_emp_id: str = "ELEC-OVERRIDE"
+    reason: str = "Urgent high-voltage substation breaker maintenance"
+
+
+@app.post("/api/gate/supervisor-override")
+def supervisor_gate_override(req: SupervisorOverrideRequest):
+    """
+    Human-in-the-Loop Supervisor Manual Override (NFPA / OSHA compliance).
+    Unlocks turnstile under authorized supervisor authority and logs immutable audit trail.
+    """
+    try:
+        from src.entry_gate import smart_entry_gatekeeper
+        res = smart_entry_gatekeeper.record_supervisor_override(
+            supervisor_id=req.supervisor_id,
+            entrant_name=req.entrant_name,
+            entrant_emp_id=req.entrant_emp_id,
+            reason=req.reason
+        )
+        return {"ok": True, "override": res}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/gate/emergency-evacuate")
+def emergency_evacuate_gate():
+    """
+    NFPA 101 Life Safety Code Fail-Open Trigger:
+    De-energizes all turnstiles to open mode for unhindered egress during facility emergency.
+    """
+    try:
+        from src.entry_gate import smart_entry_gatekeeper
+        res = smart_entry_gatekeeper.trigger_emergency_evacuation()
+        return {"ok": True, "evacuation": res}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/gate/reset-evacuate")
+def reset_evacuate_gate():
+    """Reset emergency evacuation back to normal automated gatekeeping."""
+    try:
+        from src.entry_gate import smart_entry_gatekeeper
+        res = smart_entry_gatekeeper.reset_emergency_evacuation()
+        return {"ok": True, "reset": res}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

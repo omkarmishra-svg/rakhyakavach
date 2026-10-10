@@ -132,8 +132,8 @@ const SingleCameraSlot: React.FC<SingleCameraSlotProps> = ({
       if (v.videoWidth === 0 || v.videoHeight === 0) return;
 
       const canvas = canvasRef.current || document.createElement('canvas');
-      canvas.width = 480;
-      canvas.height = 270;
+      canvas.width = 640;
+      canvas.height = 360;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
@@ -143,16 +143,29 @@ const SingleCameraSlot: React.FC<SingleCameraSlotProps> = ({
       }
       ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
       setIsInferencing(true);
+
+      const camPpeMap: Record<number, string[]> = {
+        1: ['helmet', 'vest', 'boots'],
+        2: ['helmet', 'vest'],
+        3: ['vest'],
+        4: ['helmet', 'vest', 'goggles', 'gloves']
+      };
+      const camZoneMap: Record<number, string> = {
+        1: 'zone_1',
+        2: 'zone_2',
+        3: 'zone_3',
+        4: 'zone_gate'
+      };
 
       const res = await fetch('/api/analyze-frame', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           image: dataUrl,
-          camera_id: `cam_0${config.id}`,
-          required_ppe: ['helmet', 'vest']
+          camera_id: camZoneMap[config.id] || `cam_0${config.id}`,
+          required_ppe: camPpeMap[config.id] || ['helmet', 'vest']
         })
       });
 

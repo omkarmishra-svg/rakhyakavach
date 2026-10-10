@@ -89,6 +89,7 @@ def start_render_keep_alive():
     t.start()
 
 
+# pyrefly: ignore [deprecated]
 @app.on_event("startup")
 def on_startup():
     start_render_keep_alive()
@@ -104,6 +105,8 @@ if os.path.isdir(DATA_DIR):
     app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
 
 DB_PATH = os.path.join(DATA_DIR, "incidents.db")
+from src.alert import IncidentDatabase  # pyrefly: ignore [missing-import]
+incident_db_manager = IncidentDatabase(DB_PATH)
 zone_manager = ZoneManager()
 
 # Initialize AI pipeline with high-sensitivity fire/smoke and PPE thresholds
@@ -112,6 +115,7 @@ pipeline = SafetyPipeline(sample_rate=1, ppe_conf_threshold=0.20, fire_conf_thre
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
+
     conn.row_factory = sqlite3.Row
     return conn
 

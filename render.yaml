@@ -31,8 +31,10 @@ services:
       - key: INCIDENT_RETENTION_DAYS
         value: 30
       - key: GROQ_API_KEY
-        sync: false
+        value: ""
       - key: GEMINI_API_KEY
-        sync: false
+        value: ""
       - key: SLACK_WEBHOOK_URL
-        sync: false
+        value: ""
+
+

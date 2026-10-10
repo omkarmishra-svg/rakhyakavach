@@ -63,8 +63,10 @@ RUN pip install --no-cache-dir \
 # Copy application source code and fine-tuned models
 COPY src/ /app/src/
 COPY models/ /app/models/
+COPY data/ /app/data/
 COPY server.py /app/server.py
 COPY data.yaml /app/data.yaml
+
 
 # Ensure persistent storage directories exist
 RUN mkdir -p /app/data/uploads

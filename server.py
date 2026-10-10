@@ -1105,10 +1105,19 @@ def health_check():
     }
 
 
+# Mount built React frontend static assets at root if compiled
+FRONTEND_DIST = os.path.join(PROJECT_ROOT, "frontend", "dist")
+if os.path.isdir(FRONTEND_DIST):
+    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend-ui")
+
+
 if __name__ == "__main__":
     import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    host = os.environ.get("HOST", "0.0.0.0")
     print("=" * 60)
     print("  RAKSHA KAVACH // Factory Safety AI Server v2.0")
-    print("  Serving on http://localhost:8000")
+    print(f"  Serving on http://{host}:{port}")
     print("=" * 60)
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=host, port=port)
+

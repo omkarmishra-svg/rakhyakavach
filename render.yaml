@@ -1,0 +1,38 @@
+# ==============================================================================
+# Render.com Blueprint Specification for Raksha Kavach (100% Free Tier)
+# Automatically builds React UI and runs FastAPI + YOLOv8 in a single Web Service
+# ==============================================================================
+
+services:
+  - type: web
+    name: raksha-kavach
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: HOST
+        value: 0.0.0.0
+      - key: ALERT_COOLDOWN_SECONDS
+        value: 60
+      - key: FRAME_SAMPLE_RATE
+        value: 1
+      - key: PPE_CONFIDENCE_THRESHOLD
+        value: 0.30
+      - key: FIRE_CONFIDENCE_THRESHOLD
+        value: 0.25
+      - key: TEMPORAL_WINDOW_FRAMES
+        value: 3
+      - key: FACE_BLURRING_ENABLED
+        value: true
+      - key: INCIDENT_RETENTION_DAYS
+        value: 30
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SLACK_WEBHOOK_URL
+        sync: false

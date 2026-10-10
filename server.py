@@ -15,9 +15,13 @@ import base64
 import shutil
 import datetime
 import sqlite3
+import threading
+# pyrefly: ignore [untyped-import]
+import requests
 # pyrefly: ignore [untyped-import]
 import yaml
 from typing import Dict, List, Any, Optional
+
 
 try:
     from dotenv import load_dotenv
@@ -58,7 +62,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+def start_render_keep_alive():
+    """
+    Keep-Alive Background Daemon for Render.com Free Tier:
+    Sends periodic self-pings (every 10 minutes) so Render's free container NEVER sleeps.
+    """
+    def ping_worker():
+        time.sleep(35)
+        while True:
+            try:
+                render_url = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("KEEP_ALIVE_URL")
+                port = os.environ.get("PORT", "8000")
+                if render_url:
+                    target = f"{render_url.rstrip('/')}/api/health"
+                    res = requests.get(target, timeout=10)
+                    print(f"[KeepAlive] Render self-ping -> {target} ({res.status_code})")
+                else:
+                    res = requests.get(f"http://127.0.0.1:{port}/api/health", timeout=5)
+                    print(f"[KeepAlive] Local heartbeat ping -> ({res.status_code})")
+            except Exception as e:
+                print(f"[KeepAlive] Heartbeat ping notice: {e}")
+            time.sleep(600)  # Ping every 10 minutes (prevents Render's 15-minute sleep timer)
+
+    t = threading.Thread(target=ping_worker, daemon=True)
+    t.start()
+
+
+@app.on_event("startup")
+def on_startup():
+    start_render_keep_alive()
+
+
 # Directories
+
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 UPLOADS_DIR = os.path.join(DATA_DIR, "uploads")
 os.makedirs(UPLOADS_DIR, exist_ok=True)

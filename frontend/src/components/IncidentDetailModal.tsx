@@ -400,7 +400,7 @@ export const IncidentDetailModal: React.FC<IncidentDetailModalProps> = ({
                 </div>
               </div>
 
-              {/* Root Cause & Corrective Action */}
+              {/* Recommended Solution & CAPA Action */}
               <div
                 style={{
                   background: 'rgba(0, 0, 0, 0.3)',
@@ -414,18 +414,13 @@ export const IncidentDetailModal: React.FC<IncidentDetailModalProps> = ({
                 }}
               >
                 <div>
-                  <span style={{ color: '#ffb300', fontWeight: 700 }}>ROOT CAUSE: </span>
-                  <span style={{ color: '#cbd5e1' }}>
-                    {llmAudit?.root_cause || 'Personnel bypassed safety equipment check during work station entry.'}
-                  </span>
-                </div>
-                <div>
-                  <span style={{ color: '#00e676', fontWeight: 700 }}>RECOMMENDED CAPA: </span>
+                  <span style={{ color: '#00e676', fontWeight: 700 }}>RECOMMENDED SOLUTION / CAPA: </span>
                   <span style={{ color: '#cbd5e1' }}>
                     {llmAudit?.capa_recommendation || 'Verify gear issuance log and calibrate zone airlock detector.'}
                   </span>
                 </div>
               </div>
+
 
               {/* Automated Voice PA Dispatch Section */}
               <div

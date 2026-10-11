@@ -387,17 +387,14 @@ export const MultiLevelSafetyModal: React.FC<MultiLevelSafetyModalProps> = ({
                   </div>
                 </div>
 
-                {/* Root Cause & CAPA */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11px', marginTop: '2px' }}>
+                {/* Solution & CAPA Action */}
+                <div style={{ fontSize: '11px', marginTop: '2px' }}>
                   <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '4px' }}>
-                    <span style={{ color: '#ffb300', fontWeight: 700 }}>ROOT CAUSE: </span>
-                    <span style={{ color: '#cbd5e1' }}>{llmResult.root_cause}</span>
-                  </div>
-                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '4px' }}>
-                    <span style={{ color: '#00e676', fontWeight: 700 }}>CAPA ACTION: </span>
+                    <span style={{ color: '#00e676', fontWeight: 700 }}>RECOMMENDED SOLUTION / CAPA: </span>
                     <span style={{ color: '#cbd5e1' }}>{llmResult.capa_recommendation}</span>
                   </div>
                 </div>
+
 
                 {/* Voice Dispatch */}
                 <div

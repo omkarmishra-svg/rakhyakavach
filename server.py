@@ -1152,17 +1152,8 @@ def scan_gate_live(req: GateScanRequest):
                     round((bx2 / w) * 100, 2),
                     round((by2 / h) * 100, 2)
                 ]
-
-                # Run heuristics on the person box to supplement close-up webcam gear detection
-                try:
-                    h_results = pipeline.ppe_detector._estimate_ppe_heuristics(frame, person_box)
-                    for hr in h_results:
-                        if not any(d.class_name == hr.class_name for d in ppe_dets):
-                            ppe_dets.append(hr)
-                except Exception:
-                    pass
             else:
-                # Fallback 2: check if gear detected to infer person location
+                # Fallback: check if gear detected to infer person location
                 gear_dets = [d for d in ppe_dets if d.class_name in ("vest", "safety_vest", "safety-vest", "hardhat", "helmet", "boots")]
                 if gear_dets:
                     gx1 = max(0, min(d.box[0] for d in gear_dets) - 30)
@@ -1177,22 +1168,8 @@ def scan_gate_live(req: GateScanRequest):
                         round((gx2 / w) * 100, 2),
                         round((gy2 / h) * 100, 2)
                     ]
-                else:
-                    # Fallback 3: Center-frame heuristic for optical webcam close-up
-                    cw_box = [int(w * 0.08), int(h * 0.04), int(w * 0.92), int(h * 0.96)]
-                    try:
-                        h_results = pipeline.ppe_detector._estimate_ppe_heuristics(frame, cw_box)
-                        for hr in h_results:
-                            if not any(d.class_name == hr.class_name for d in ppe_dets):
-                                ppe_dets.append(hr)
-                        if any(hr.class_name in ("helmet", "vest") for hr in h_results):
-                            person_detected = True
-                            person_box = cw_box
-                            norm_box = [8.0, 4.0, 92.0, 96.0]
-                    except Exception:
-                        pass
 
-            # Populate detected_ppe and gear_boxes for frontend HUD rendering
+            # Populate detected_ppe and gear_boxes from fine-tuned neural model
             gear_boxes = []
             for d in ppe_dets:
                 cls_name = d.class_name.lower().replace("-", "_").replace(" ", "_")
@@ -1204,33 +1181,29 @@ def scan_gate_live(req: GateScanRequest):
                     round((gy2 / h) * 100, 2),
                 ]
                 mapped_name = None
+                if "no_helmet" in cls_name or "no_vest" in cls_name or "no_glove" in cls_name or "no_boot" in cls_name:
+                    continue  # Negative class, not worn
+
                 if "hardhat" in cls_name or "helmet" in cls_name:
-                    if "no" not in cls_name:
-                        mapped_name = "helmet"
+                    mapped_name = "helmet"
                 elif "vest" in cls_name:
-                    if "no" not in cls_name:
-                        mapped_name = "vest"
+                    mapped_name = "vest"
                 elif "glove" in cls_name:
-                    if "no" not in cls_name:
-                        mapped_name = "gloves"
+                    mapped_name = "gloves"
                 elif "goggle" in cls_name or "glass" in cls_name:
                     mapped_name = "goggles"
                 elif "boot" in cls_name or "shoe" in cls_name:
-                    if "no" not in cls_name:
-                        mapped_name = "boots"
+                    mapped_name = "boots"
                 elif "harness" in cls_name or "fall_arrest" in cls_name:
-                    if "no" not in cls_name:
-                        mapped_name = "safety_harness"
+                    mapped_name = "safety_harness"
                 elif "welding" in cls_name or "shield" in cls_name:
                     mapped_name = "welding_shield"
                 elif "chemical_suit" in cls_name or "hazmat" in cls_name:
-                    if "no" not in cls_name:
-                        mapped_name = "chemical_suit"
+                    mapped_name = "chemical_suit"
                 elif "respirator" in cls_name or "gas_mask" in cls_name:
-                    if "no" not in cls_name:
-                        mapped_name = "chemical_respirator"
+                    mapped_name = "chemical_respirator"
 
-                if mapped_name:
+                if mapped_name and d.confidence >= 0.35:
                     if mapped_name not in detected_ppe:
                         detected_ppe.append(mapped_name)
                     gear_boxes.append({
@@ -1239,8 +1212,8 @@ def scan_gate_live(req: GateScanRequest):
                         "confidence": round(d.confidence, 2)
                     })
 
-        # High-Speed Multi-Modal LLM Visual Auditor (Groq Llama-3.2 Vision / Gemini Flash)
-        # Prevents heuristic hallucination by verifying actual human presence and worn gear via VLM
+        # High-Speed Multi-Modal LLM Visual Auditor (Groq / Gemini)
+        # Truthful visual verification without false color hallucinations
         llm_ppe_res = None
         if img_payload and (vision_agent.groq_client or vision_agent.gemini_model):
             try:
@@ -1255,18 +1228,13 @@ def scan_gate_live(req: GateScanRequest):
                 detected_ppe = []
             else:
                 person_detected = True
+                # Ground truth from multi-modal vision:
                 llm_worn = set(llm_ppe_res.get("worn_ppe", []))
-                # Robust Multi-Model Fusion: Combine YOLO detections, heuristics, VLM, and manual UI toggles
-                fused_set = set(detected_ppe) | llm_worn
-                if req.detected_ppe:
-                    fused_set |= set(req.detected_ppe)
-                detected_ppe = sorted(list(fused_set))
+                yolo_worn = set(g["gear"] for g in gear_boxes if g.get("confidence", 0) >= 0.45)
+                # Gear is worn ONLY if confirmed by VLM or confident neural YOLO detection
+                detected_ppe = sorted(list(llm_worn | yolo_worn))
                 if norm_box is None:
                     norm_box = [15.0, 5.0, 85.0, 95.0]
-        else:
-            # Fallback if VLM is in cooldown or unavailable: preserve YOLO and UI toggles
-            if req.detected_ppe:
-                detected_ppe = sorted(list(set(detected_ppe) | set(req.detected_ppe)))
 
         should_assign_random = bool(req.assign_random)
         if person_detected and not emp_id and not should_assign_random:

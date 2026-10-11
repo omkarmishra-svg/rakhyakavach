@@ -207,10 +207,6 @@ class PPEDetector:
                 # If running custom PPE model, preserve fine-tuned class names
                 if self.is_custom_model:
                     results.append(PPEDetectionResult(coords, cls_name, conf, track_id))
-                    if cls_name.lower() == "person":
-                        # Run heuristics to detect gloves, boots, goggles, etc. for this specific worker
-                        heuristics = self._estimate_ppe_heuristics(frame, coords)
-                        results.extend(heuristics)
                 else:
                     # COCO pretrained fallback: detect person and estimate PPE presence
                     if cls_name == "person":

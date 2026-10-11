@@ -16,7 +16,8 @@ import {
   CheckCircle2,
   XCircle,
   Volume2,
-  VolumeX
+  VolumeX,
+  HardHat
 } from 'lucide-react';
 import { soundEngine } from '../utils/audio';
 
@@ -92,6 +93,7 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
   // Live detection states
   const [personDetected, setPersonDetected] = useState<boolean>(true);
   const [normBox, setNormBox] = useState<[number, number, number, number]>([28, 12, 72, 92]);
+  const [showPPE, setShowPPE] = useState<boolean>(true);
   const isInferencingRef = useRef<boolean>(false);
   const emptyFramesRef = useRef<number>(0);
   const entrantRef = useRef<EntrantProfile>(entrant);
@@ -305,8 +307,7 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
           body: JSON.stringify({
             image: dataUrl,
             emp_id_override: entrantRef.current.emp_id,
-            manual_contraband: entrantRef.current.contraband,
-            detected_ppe: entrantRef.current.worn_ppe
+            manual_contraband: entrantRef.current.contraband
           })
         });
 
@@ -318,10 +319,8 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
               setPersonDetected(true);
               setNormBox([data.norm_box[0], data.norm_box[1], data.norm_box[2], data.norm_box[3]]);
 
-              // Real-time live detections directly from camera/LLM inference fused with manual toggles
-              const serverWorn: string[] = Array.isArray(data.worn_ppe) ? data.worn_ppe : [];
-              const manualWorn: string[] = entrantRef.current.worn_ppe || [];
-              const currentWorn: string[] = Array.from(new Set([...serverWorn, ...manualWorn]));
+              // Live camera detections directly from AI vision (no sticky cache)
+              const currentWorn: string[] = Array.isArray(data.worn_ppe) ? data.worn_ppe : [];
               const currentReq: string[] = ['helmet', 'vest'];
               const currentMissing = currentReq.filter((r) => !currentWorn.includes(r));
 
@@ -916,7 +915,7 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
 
         {/* SVG Bounding Box Overlays (Exact Industrial CCTV Live Vision Square Style) */}
         <svg className="feed-overlay-canvas" viewBox="0 0 100 100" preserveAspectRatio="none">
-          {personDetected ? (
+          {personDetected && showPPE ? (
             <g className="entrant-detection-group">
               {/* DPDP Privacy Blur Filter (Face Anonymization) */}
               {dpdpBlur && (
@@ -1063,6 +1062,39 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
               <Navigation size={13} />
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Footer Controls: PPE Equipment Sentinel (Matching other CCTV feeds) */}
+      <div
+        className="feed-footer-controls"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '7px 16px',
+          background: 'rgba(15, 23, 42, 0.95)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.08)'
+        }}
+      >
+        <div className="footer-controls-left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button className="clean-ctrl-btn" onClick={togglePlay}>
+            {isPlaying ? <Pause size={13} /> : <Play size={13} />}
+            <span>{isPlaying ? 'Pause' : 'Play'}</span>
+          </button>
+
+          <button
+            className={`clean-toggle-chip ${showPPE ? 'active' : ''}`}
+            onClick={() => setShowPPE(!showPPE)}
+            title="Toggle PPE Equipment Sentinel live vision detection squares"
+          >
+            <HardHat size={13} />
+            <span>PPE Equipment Sentinel</span>
+          </button>
+        </div>
+
+        <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
+          OSHA 1926 / NFPA 70E LIVE AI SENTINEL
         </div>
       </div>
 

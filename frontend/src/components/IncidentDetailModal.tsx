@@ -10,9 +10,9 @@ import {
   Cpu,
   Volume2,
   RefreshCw,
-  Layers,
   Radio
 } from 'lucide-react';
+
 import { Incident, IncidentStatus } from '../types';
 
 interface IncidentDetailModalProps {
@@ -294,34 +294,9 @@ export const IncidentDetailModal: React.FC<IncidentDetailModalProps> = ({
             </div>
           </div>
 
-          {/* Right: Multi-Level Safety Intelligence LLM Report */}
+          {/* Right: Raksha Kavach Safety Intelligence Audit */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {/* Multi-Level Architecture Badges */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '6px 10px',
-                background: 'rgba(0, 242, 254, 0.04)',
-                border: '1px solid rgba(0, 242, 254, 0.2)',
-                borderRadius: '6px'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Layers size={13} color="#00f2fe" />
-                <span className="font-mono" style={{ fontSize: '11px', fontWeight: 700, color: '#00f2fe' }}>
-                  MULTI-LEVEL SAFETY INTELLIGENCE PIPELINE
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                <span className="badge-level" style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(0, 230, 118, 0.15)', color: '#00e676', border: '1px solid rgba(0, 230, 118, 0.3)' }}>L1: YOLOv8</span>
-                <span className="badge-level" style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(0, 242, 254, 0.15)', color: '#00f2fe', border: '1px solid rgba(0, 242, 254, 0.3)' }}>L2: Micro-VLM</span>
-                <span className="badge-level" style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(255, 179, 0, 0.15)', color: '#ffb300', border: '1px solid rgba(255, 179, 0, 0.3)' }}>L3: EHS LLM</span>
-              </div>
-            </div>
-
-            {/* Level 3 Forensic Root Cause & Regulatory Citations */}
+            {/* Raksha Kavach Forensic Audit & Regulatory Citations */}
             <div
               style={{
                 background: 'linear-gradient(135deg, rgba(14, 21, 28, 0.95) 0%, rgba(10, 14, 18, 0.95) 100%)',
@@ -337,13 +312,13 @@ export const IncidentDetailModal: React.FC<IncidentDetailModalProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Cpu size={14} color="#00f2fe" />
                   <span style={{ fontSize: '11px', fontWeight: 800, color: '#00f2fe', letterSpacing: '0.04em' }}>
-                    LEVEL 3 EHS REGULATORY LLM REASONER
+                    RAKSHA KAVACH AI SAFETY AUDIT
                   </span>
                 </div>
                 {loadingLLM && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#ffb300' }}>
                     <RefreshCw size={10} className="spinning" />
-                    <span>Reasoning...</span>
+                    <span>Analyzing...</span>
                   </div>
                 )}
                 {llmAudit && !loadingLLM && (
@@ -365,8 +340,11 @@ export const IncidentDetailModal: React.FC<IncidentDetailModalProps> = ({
 
               {/* Forensic Summary */}
               <div style={{ fontSize: '11.5px', color: '#e2e8f0', lineHeight: '1.4' }}>
-                {llmAudit?.forensic_summary ||
-                  `Automated safety audit for ${incident.violation_type} in ${incident.zone_name}. Regulatory compliance evaluation active.`}
+                {(llmAudit?.forensic_summary ||
+                  `Raksha Kavach AI Safety Sentinel: Automated audit for ${incident.violation_type} in ${incident.zone_name}. Regulatory compliance evaluation active.`)
+                  .replace(/Groq AI Safety Audit \([^)]+\):/gi, 'Raksha Kavach AI Safety Sentinel:')
+                  .replace(/Groq AI/gi, 'Raksha Kavach AI')
+                }
               </div>
 
               {/* OSHA & NFPA Citations */}
@@ -400,7 +378,7 @@ export const IncidentDetailModal: React.FC<IncidentDetailModalProps> = ({
                 </div>
               </div>
 
-              {/* Recommended Solution & CAPA Action */}
+              {/* Root Cause & Recommended Solution / CAPA */}
               <div
                 style={{
                   background: 'rgba(0, 0, 0, 0.3)',
@@ -414,12 +392,19 @@ export const IncidentDetailModal: React.FC<IncidentDetailModalProps> = ({
                 }}
               >
                 <div>
+                  <span style={{ color: '#ffb300', fontWeight: 700 }}>ROOT CAUSE: </span>
+                  <span style={{ color: '#cbd5e1' }}>
+                    {llmAudit?.root_cause || 'Personnel bypassed safety equipment check during work station entry.'}
+                  </span>
+                </div>
+                <div>
                   <span style={{ color: '#00e676', fontWeight: 700 }}>RECOMMENDED SOLUTION / CAPA: </span>
                   <span style={{ color: '#cbd5e1' }}>
                     {llmAudit?.capa_recommendation || 'Verify gear issuance log and calibrate zone airlock detector.'}
                   </span>
                 </div>
               </div>
+
 
 
               {/* Automated Voice PA Dispatch Section */}

@@ -398,15 +398,16 @@ class MultiLevelSafetyAgent:
                     "regulatory_status": f"NON-COMPLIANT // {issues_str} FLAGGED",
                     "citations": parsed.get("citations", ["OSHA 29 CFR 1910.132"]),
                     "forensic_summary": (
-                        f"Groq AI Safety Audit ({model}): Incident in '{zone_name}' (Target #{worker_id or 1}). "
+                        f"Raksha Kavach AI Safety Sentinel: Incident in '{zone_name}' (Target #{worker_id or 1}). "
                         f"Hazard Profile: {issues_str}. {parsed.get('root_cause', '')}"
                     ),
                     "root_cause": parsed.get("root_cause", "Operational non-compliance detected."),
                     "dispatch_action": parsed.get("dispatch_action", "Halt activity and verify safety gear."),
                     "announcement_text": parsed.get("announcement_text", f"Attention {zone_name}. Safety protocol violation."),
                     "capa_recommendation": parsed.get("capa_recommendation", "Review area safety compliance log."),
-                    "engine": f"Groq High-Speed AI Engine ({model})",
+                    "engine": "Raksha Kavach Autonomous Safety Engine",
                     "verified": True
+
                 }
             except Exception as e:
                 print(f"[MultiLevelSafetyAgent] Groq attempt with {model} warning: {e}")

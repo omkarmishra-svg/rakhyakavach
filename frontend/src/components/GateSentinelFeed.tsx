@@ -14,7 +14,10 @@ import {
   ShieldCheck,
   ShieldAlert,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Volume2,
+  VolumeX,
+  Megaphone
 } from 'lucide-react';
 import { soundEngine } from '../utils/audio';
 
@@ -93,6 +96,52 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
   const isInferencingRef = useRef<boolean>(false);
   const emptyFramesRef = useRef<number>(0);
   const entrantRef = useRef<EntrantProfile>(entrant);
+
+  // Automated Supervisor Voice Advisory Engine
+  const [voiceAlertsEnabled, setVoiceAlertsEnabled] = useState<boolean>(true);
+  const lastSpokenTextRef = useRef<string>('');
+  const lastSpokenTimeRef = useRef<number>(0);
+
+  const speakVoiceWarning = useCallback((text: string, force = false) => {
+    if (!text || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    if (!voiceAlertsEnabled && !force) return;
+
+    const now = Date.now();
+    // Intelligent debounce: prevent audio stutter across fast camera frames
+    if (!force && lastSpokenTextRef.current === text && now - lastSpokenTimeRef.current < 7500) {
+      return;
+    }
+    if (!force && now - lastSpokenTimeRef.current < 4000) {
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.98;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      const voices = window.speechSynthesis.getVoices();
+      const englishVoice = voices.find(
+        (v) =>
+          v.lang.includes('en') &&
+          (v.name.includes('Natural') ||
+            v.name.includes('Google') ||
+            v.name.includes('David') ||
+            v.name.includes('Zira') ||
+            v.name.includes('Samantha') ||
+            v.name.includes('English'))
+      );
+      if (englishVoice) {
+        utterance.voice = englishVoice;
+      }
+      window.speechSynthesis.speak(utterance);
+      lastSpokenTextRef.current = text;
+      lastSpokenTimeRef.current = now;
+    } catch (err) {
+      console.warn('Speech synthesis note:', err);
+    }
+  }, [voiceAlertsEnabled]);
 
   useEffect(() => {
     entrantRef.current = entrant;
@@ -270,10 +319,24 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
               setPersonDetected(true);
               setNormBox([data.norm_box[0], data.norm_box[1], data.norm_box[2], data.norm_box[3]]);
 
-              // Real-time live detections directly from camera/LLM inference
-              const currentWorn: string[] = Array.isArray(data.worn_ppe) ? data.worn_ppe : [];
+              // Real-time live detections directly from camera/LLM inference fused with manual toggles
+              const serverWorn: string[] = Array.isArray(data.worn_ppe) ? data.worn_ppe : [];
+              const manualWorn: string[] = entrantRef.current.worn_ppe || [];
+              const currentWorn: string[] = Array.from(new Set([...serverWorn, ...manualWorn]));
               const currentReq: string[] = ['helmet', 'vest'];
               const currentMissing = currentReq.filter((r) => !currentWorn.includes(r));
+
+              // Automated Supervisor Voice Advisory Trigger
+              if (data.voice_warning) {
+                speakVoiceWarning(data.voice_warning);
+              } else if (currentMissing.length > 0) {
+                const missingText = currentMissing.join(' and ');
+                speakVoiceWarning(
+                  `Attention Supervisor: Worker ${data.name || entrantRef.current.name} is missing ${missingText}. Turnstile locked at Gate 1.`
+                );
+              } else if (currentWorn.includes('helmet') && currentWorn.includes('vest')) {
+                speakVoiceWarning(`Access granted for ${data.name || entrantRef.current.name}. All safety equipment verified.`);
+              }
 
               // If supervisor previously granted manual override, preserve unlocked status
               const isSupervisorOverridden = entrantRef.current.turnstile_unlocked && entrantRef.current.decision_message?.includes('SUPERVISOR');
@@ -370,6 +433,7 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
     };
     onEntrantUpdate(updated);
     soundEngine.playChime();
+    speakVoiceWarning(`Supervisor emergency override authorized. Gate turnstile unlocked for ${entrant.name}.`, true);
   };
 
   const handleSupervisorDenyEntry = async () => {
@@ -394,6 +458,7 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
     };
     onEntrantUpdate(updated);
     soundEngine.playCriticalSiren();
+    speakVoiceWarning(`Supervisor refusal enforced. Worker entry blocked at Gate 1 for ${entrant.name}.`, true);
   };
 
   // Equipment compliance status computation (Authentic CCTV square color logic)
@@ -548,6 +613,37 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
             <span>{dpdpBlur ? 'DPDP BLUR: ON' : 'DPDP BLUR: OFF'}</span>
           </button>
 
+          {/* Supervisor Voice Warning Toggle */}
+          <button
+            className="feed-mini-btn"
+            onClick={() => setVoiceAlertsEnabled(!voiceAlertsEnabled)}
+            title="Toggle Automated Supervisor Voice Warning Audio"
+            style={{ color: voiceAlertsEnabled ? '#00e676' : '#94a3b8' }}
+          >
+            {voiceAlertsEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
+            <span>{voiceAlertsEnabled ? 'VOICE ALERT: ON' : 'VOICE ALERT: OFF'}</span>
+          </button>
+
+          {/* Test Voice Warning Button */}
+          <button
+            className="feed-mini-btn"
+            onClick={() => {
+              const testMissing =
+                entrant.missing_ppe && entrant.missing_ppe.length > 0
+                  ? entrant.missing_ppe.join(' and ')
+                  : 'Helmet and Safety Vest';
+              speakVoiceWarning(
+                `Attention Supervisor: Worker ${entrant.name} is missing ${testMissing}. Turnstile locked at Gate 1.`,
+                true
+              );
+            }}
+            title="Test real-time supervisor voice warning"
+            style={{ color: '#00f2fe' }}
+          >
+            <Megaphone size={12} />
+            <span>TEST VOICE</span>
+          </button>
+
           {/* Play/Pause */}
           <button className="feed-mini-btn" onClick={togglePlay} title={isPlaying ? 'Pause' : 'Play'}>
             {isPlaying ? <Pause size={12} /> : <Play size={12} />}
@@ -557,6 +653,44 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
           <button className="feed-mini-btn btn-fullscreen" onClick={handleToggleFullscreen} title="Full Screen">
             <Maximize2 size={12} />
           </button>
+        </div>
+      </div>
+
+      {/* Automated AI Inspection Banner for Project Presentation */}
+      <div
+        style={{
+          padding: '6px 14px',
+          background: 'rgba(2, 132, 199, 0.08)',
+          borderBottom: '1px solid rgba(0, 242, 254, 0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          fontSize: '11px',
+          color: '#cbd5e1'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span
+            style={{
+              padding: '2px 7px',
+              borderRadius: '4px',
+              background: '#00f2fe',
+              color: '#0a0f1d',
+              fontWeight: 800,
+              fontSize: '10px',
+              letterSpacing: '0.05em'
+            }}
+          >
+            AUTOMATED AI SENTINEL
+          </span>
+          <span>
+            Replacing manual supervisor logging with automated vision verification & instant voice warnings.
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px', fontWeight: 700 }}>
+          <span style={{ color: voiceAlertsEnabled ? '#00e676' : '#94a3b8' }}>
+            ● {voiceAlertsEnabled ? 'VOICE ADVISORY ACTIVE' : 'VOICE MUTED'}
+          </span>
         </div>
       </div>
 

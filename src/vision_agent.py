@@ -746,13 +746,18 @@ class MultiLevelSafetyAgent:
         prompt = (
             "You are an automated industrial safety checkpoint camera auditor at plant Gate 01.\n"
             "Analyze the person in this camera frame for PPE compliance.\n"
-            "Answer strictly in this format (nothing else):\n"
+            "Guidance:\n"
+            "- HELMET: YES if wearing ANY hard hat, safety helmet, bump cap, construction hat, or protective headwear (yellow, white, blue, red, orange, green, or grey). Look carefully at the top of the head. Otherwise NO.\n"
+            "- VEST: YES if wearing ANY high-visibility vest, reflective safety vest, neon/bright work vest or jacket (neon yellow, lime, orange, green) with or without reflective tape. Otherwise NO.\n"
+            "- GOGGLES: YES if wearing safety glasses, goggles, spectacles, or eye shield. Otherwise NO.\n"
+            "- GLOVES: YES if wearing work gloves or protective handwear. Otherwise NO.\n"
+            "Answer strictly in this format:\n"
             "PERSON: YES or NO\n"
             "HELMET: YES or NO\n"
             "VEST: YES or NO\n"
             "GOGGLES: YES or NO\n"
             "GLOVES: YES or NO\n"
-            "SUMMARY: <one concise sentence describing the detected worker and what gear is worn or missing>"
+            "SUMMARY: <one concise sentence advising the supervisor what gear is worn and what is missing>"
         )
 
         text = None

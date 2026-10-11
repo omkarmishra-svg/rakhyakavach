@@ -1250,14 +1250,23 @@ def scan_gate_live(req: GateScanRequest):
 
         if llm_ppe_res is not None:
             llm_person = llm_ppe_res.get("person_detected", False)
-            if not llm_person:
+            if not llm_person and not person_detected:
                 person_detected = False
                 detected_ppe = []
             else:
                 person_detected = True
-                detected_ppe = list(llm_ppe_res.get("worn_ppe", []))
+                llm_worn = set(llm_ppe_res.get("worn_ppe", []))
+                # Robust Multi-Model Fusion: Combine YOLO detections, heuristics, VLM, and manual UI toggles
+                fused_set = set(detected_ppe) | llm_worn
+                if req.detected_ppe:
+                    fused_set |= set(req.detected_ppe)
+                detected_ppe = sorted(list(fused_set))
                 if norm_box is None:
                     norm_box = [15.0, 5.0, 85.0, 95.0]
+        else:
+            # Fallback if VLM is in cooldown or unavailable: preserve YOLO and UI toggles
+            if req.detected_ppe:
+                detected_ppe = sorted(list(set(detected_ppe) | set(req.detected_ppe)))
 
         should_assign_random = bool(req.assign_random)
         if person_detected and not emp_id and not should_assign_random:
@@ -1276,6 +1285,21 @@ def scan_gate_live(req: GateScanRequest):
         if llm_ppe_res and llm_ppe_res.get("decision_message") and person_detected:
             res["decision_message"] = llm_ppe_res["decision_message"]
             res["llm_engine"] = llm_ppe_res.get("engine")
+
+        # Synthesize real-time automated supervisor voice warning
+        worker_name = res.get("name", "Worker")
+        missing_list = res.get("missing_ppe", [])
+        missing_fmt = ", ".join(m.replace("_", " ").title() for m in missing_list) if missing_list else "none"
+
+        if not person_detected:
+            voice_warning = "Gate 1 sensor ready. Please stand in front of the camera."
+        elif res.get("turnstile_unlocked"):
+            voice_warning = f"Access granted for {worker_name}. All safety equipment verified. Turnstile unlocked."
+        else:
+            voice_warning = f"Attention Supervisor: Worker {worker_name} is missing {missing_fmt}. Turnstile locked at Gate 1."
+
+        res["voice_warning"] = voice_warning
+
         return {
             "ok": True,
             "person_detected": person_detected,

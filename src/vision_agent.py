@@ -15,10 +15,17 @@ import sys
 import json
 import time
 import base64
+import re
 import importlib
 from typing import Dict, Any, List, Optional
 import numpy as np
 import cv2
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 
 def _safe_import_gemini():
@@ -723,6 +730,124 @@ class MultiLevelSafetyAgent:
             "raw_reasoning": reason or text,
             "text": text
         }
+
+    def inspect_entrant_ppe_with_llm(self, image_base64: str) -> Optional[Dict[str, Any]]:
+        """
+        Fast Multi-Modal LLM Visual Gate Auditor:
+        Uses Groq (Llama-3.2 Vision) or Gemini 3.8 Flash to inspect the entrant.
+        Strictly determines whether a human is present and exactly which PPE items (helmet, vest, etc.)
+        are worn without heuristic hallucination.
+        """
+        if not image_base64:
+            return {"person_detected": False, "worn_ppe": [], "missing_ppe": ["helmet", "vest"], "decision_message": "No video signal received."}
+
+        clean_b64 = image_base64.split(",", 1)[1] if "," in image_base64 else image_base64
+
+        prompt = (
+            "You are an automated industrial safety checkpoint camera auditor at plant Gate 01.\n"
+            "Analyze the person in this camera frame for PPE compliance.\n"
+            "Answer strictly in this format (nothing else):\n"
+            "PERSON: YES or NO\n"
+            "HELMET: YES or NO\n"
+            "VEST: YES or NO\n"
+            "GOGGLES: YES or NO\n"
+            "GLOVES: YES or NO\n"
+            "SUMMARY: <one concise sentence describing the detected worker and what gear is worn or missing>"
+        )
+
+        text = None
+        engine_used = None
+
+        # 1. Primary: Groq High-Speed Vision
+        now = time.time()
+        if self.groq_client and now > self.groq_cooldown_until:
+            try:
+                resp = self.groq_client.chat.completions.create(
+                    model=self.groq_model_name,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{clean_b64}"}}
+                        ]
+                    }],
+                    max_tokens=150,
+                    temperature=0.0
+                )
+                text = resp.choices[0].message.content.strip()
+                engine_used = f"Groq VLM ({self.groq_model_name})"
+            except Exception as e:
+                print(f"[inspect_entrant_ppe_with_llm] Groq note: {e}")
+                if "429" in str(e) or "rate" in str(e).lower():
+                    self.groq_cooldown_until = now + 45.0
+
+        # 2. Secondary: Google Gemini Vision
+        if not text and self.gemini_model and now > self.gemini_cooldown_until:
+            try:
+                raw_bytes = base64.b64decode(clean_b64)
+                res = self.gemini_model.generate_content([
+                    prompt,
+                    {"mime_type": "image/jpeg", "data": raw_bytes}
+                ])
+                text = res.text.strip()
+                engine_used = f"Gemini VLM ({self.gemini_model_name})"
+            except Exception as e:
+                print(f"[inspect_entrant_ppe_with_llm] Gemini note: {e}")
+                if "429" in str(e) or "quota" in str(e).lower():
+                    self.gemini_cooldown_until = now + 45.0
+
+        if text:
+            person = bool(re.search(r"PERSON:\s*YES", text, re.I))
+            if not person:
+                return {
+                    "person_detected": False,
+                    "worn_ppe": [],
+                    "missing_ppe": ["helmet", "vest"],
+                    "decision_message": "NO ENTRANT DETECTED: Stand in front of sensor.",
+                    "engine": engine_used
+                }
+
+            helmet = bool(re.search(r"HELMET:\s*YES", text, re.I))
+            vest = bool(re.search(r"VEST:\s*YES", text, re.I))
+            goggles = bool(re.search(r"GOGGLES:\s*YES", text, re.I))
+            gloves = bool(re.search(r"GLOVES:\s*YES", text, re.I))
+
+            worn = []
+            missing = []
+            if helmet:
+                worn.append("helmet")
+            else:
+                missing.append("helmet")
+
+            if vest:
+                worn.append("vest")
+            else:
+                missing.append("vest")
+
+            if goggles:
+                worn.append("goggles")
+            if gloves:
+                worn.append("gloves")
+
+            summary = "Personnel inspected at Gate 01 airlock."
+            for line in text.split("\n"):
+                if line.upper().startswith("SUMMARY:"):
+                    summary = line.split(":", 1)[1].strip()
+                    break
+
+            has_primary = (helmet and vest)
+            return {
+                "person_detected": True,
+                "worn_ppe": worn,
+                "missing_ppe": missing,
+                "has_primary": has_primary,
+                "is_compliant": has_primary,
+                "decision_message": summary,
+                "raw_llm_text": text,
+                "engine": engine_used
+            }
+
+        return None
 
 
 # Singleton export for system-wide consumption

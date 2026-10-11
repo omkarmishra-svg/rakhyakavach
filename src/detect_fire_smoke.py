@@ -32,6 +32,10 @@ class HazardDetectionResult:
         self.severity = severity  # 'Low', 'Medium', 'High', 'Critical'
 
     @property
+    def class_name(self) -> str:
+        return self.hazard_type
+
+    @property
     def x1(self) -> int:
         return self.box[0]
 
@@ -176,7 +180,9 @@ class FireSmokeDetector:
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
         s_channel = hsv[:, :, 1]
         v_channel = hsv[:, :, 2]
+        # pyrefly: ignore [no-matching-overload]
         mean_s = float(np.mean(s_channel))
+        # pyrefly: ignore [no-matching-overload]
         mean_v = float(np.mean(v_channel))
         dark_soot_ratio = float(np.sum(v_channel < 85)) / float(max(1, v_channel.size))
 
@@ -197,10 +203,13 @@ class FireSmokeDetector:
         gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
         gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
         mag = cv2.magnitude(gx, gy)
+        # pyrefly: ignore [no-matching-overload]
         edge_energy = float(np.mean(mag))
 
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        # pyrefly: ignore [no-matching-overload]
         mean_s = float(np.mean(hsv[:, :, 1]))
+        # pyrefly: ignore [no-matching-overload]
         mean_v = float(np.mean(hsv[:, :, 2]))
 
         # Diffuse dust haze has low edge energy and uniform muted saturation without thermal core

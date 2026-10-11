@@ -95,7 +95,7 @@ class PPEDetector:
     def __init__(
         self,
         model_path: str = "models/ppe_best.pt",
-        confidence_threshold: float = 0.20,
+        confidence_threshold: float = 0.15,
         device: str = "cpu"
     ):
         self.model_path = model_path
@@ -306,65 +306,72 @@ class PPEDetector:
             torso_y1_ratio = 0.18
             torso_y2_ratio = 0.65
 
-        # 1. Head crop
-        hy1 = max(0, y1)
-        hy2 = min(h_frame, y1 + int(ph * head_h_ratio))
-        hx1 = max(0, x1 + int(pw * 0.12))
-        hx2 = min(w_frame, x2 - int(pw * 0.12))
+        # 1. Head crop (with generous headroom for helmet dome and wide brim)
+        hy1 = max(0, y1 - int(ph * 0.12))
+        hy2 = min(h_frame, y1 + int(ph * max(0.35, head_h_ratio)))
+        hx1 = max(0, x1 - int(pw * 0.05))
+        hx2 = min(w_frame, x2 + int(pw * 0.05))
 
         if hy2 > hy1 and hx2 > hx1:
             head_crop = frame[hy1:hy2, hx1:hx2]
             hsv = cv2.cvtColor(head_crop, cv2.COLOR_BGR2HSV)
 
-            # Certified Hard Hat colors: Yellow, White, Orange, Blue, Red
-            yellow_mask = cv2.inRange(hsv, np.array([16, 80, 80]), np.array([36, 255, 255]))
-            white_mask = cv2.inRange(hsv, np.array([0, 0, 185]), np.array([180, 38, 255]))
-            orange_mask = cv2.inRange(hsv, np.array([8, 120, 120]), np.array([22, 255, 255]))
-            blue_mask = cv2.inRange(hsv, np.array([95, 90, 80]), np.array([130, 255, 255]))
-            red_mask1 = cv2.inRange(hsv, np.array([0, 120, 100]), np.array([10, 255, 255]))
-            red_mask2 = cv2.inRange(hsv, np.array([170, 120, 100]), np.array([180, 255, 255]))
+            # Certified Hard Hat colors: Yellow, White, Orange, Blue, Red, Neon Green, Dark/Grey
+            yellow_mask = cv2.inRange(hsv, np.array([14, 22, 45]), np.array([45, 255, 255]))
+            white_mask = cv2.inRange(hsv, np.array([0, 0, 65]), np.array([180, 75, 255]))
+            orange_mask = cv2.inRange(hsv, np.array([2, 25, 45]), np.array([24, 255, 255]))
+            blue_mask = cv2.inRange(hsv, np.array([85, 22, 35]), np.array([140, 255, 255]))
+            red_mask1 = cv2.inRange(hsv, np.array([0, 30, 45]), np.array([14, 255, 255]))
+            red_mask2 = cv2.inRange(hsv, np.array([160, 30, 45]), np.array([180, 255, 255]))
+            green_mask = cv2.inRange(hsv, np.array([35, 20, 35]), np.array([90, 255, 255]))
+
+            # Red/orange skin tone rejection only on red hue range so yellow/white helmets are never subtracted
+            red_orange = cv2.bitwise_or(red_mask1, cv2.bitwise_or(red_mask2, orange_mask))
+            skin_mask = cv2.inRange(hsv, np.array([0, 40, 60]), np.array([16, 135, 210]))
+            clean_red_orange = cv2.bitwise_and(red_orange, cv2.bitwise_not(skin_mask))
 
             combined_helmet = cv2.bitwise_or(yellow_mask, white_mask)
-            combined_helmet = cv2.bitwise_or(combined_helmet, orange_mask)
             combined_helmet = cv2.bitwise_or(combined_helmet, blue_mask)
-            combined_helmet = cv2.bitwise_or(combined_helmet, red_mask1)
-            combined_helmet = cv2.bitwise_or(combined_helmet, red_mask2)
+            combined_helmet = cv2.bitwise_or(combined_helmet, green_mask)
+            combined_helmet = cv2.bitwise_or(combined_helmet, clean_red_orange)
 
-            # Anti-Hallucination: Reject natural skin tones and dark hair textures
-            skin_mask = cv2.inRange(hsv, np.array([0, 35, 60]), np.array([25, 140, 210]))
-            dark_hair_mask = cv2.inRange(hsv, np.array([0, 0, 0]), np.array([180, 255, 60]))
-            rejection_mask = cv2.bitwise_or(skin_mask, dark_hair_mask)
-            clean_helmet = cv2.bitwise_and(combined_helmet, cv2.bitwise_not(rejection_mask))
+            helmet_ratio = np.sum(combined_helmet > 0) / float(max(1, combined_helmet.size))
 
-            helmet_ratio = np.sum(clean_helmet > 0) / float(max(1, clean_helmet.size))
+            # Upper dome check: head crown area (where hard hat is always worn)
+            crop_h = hy2 - hy1
+            upper_crop = combined_helmet[:int(crop_h * 0.55), :]
+            upper_ratio = np.sum(upper_crop > 0) / float(max(1, upper_crop.size))
 
-            if helmet_ratio > 0.10:
+            if helmet_ratio > 0.025 or upper_ratio > 0.035:
+                h_val = float(helmet_ratio) if float(helmet_ratio) > float(upper_ratio) else float(upper_ratio)
                 heuristics.append(
-                    PPEDetectionResult([hx1, hy1, hx2, hy2], "helmet", min(0.96, float(0.72 + helmet_ratio * 0.24)))
+                    PPEDetectionResult([hx1, hy1, hx2, hy2], "helmet", min(0.96, 0.78 + h_val * 0.22))
                 )
 
-        # 2. Torso crop
-        ty1 = min(h_frame, y1 + int(ph * torso_y1_ratio))
-        ty2 = min(h_frame, y1 + int(ph * torso_y2_ratio))
-        tx1 = max(0, x1 + int(pw * 0.08))
-        tx2 = min(w_frame, x2 - int(pw * 0.08))
+        # 2. Torso crop (Webcam close-ups: torso starts below chin and extends down full chest/body)
+        ty1 = min(h_frame, y1 + int(ph * 0.14))
+        ty2 = min(h_frame, max(y2, y1 + int(ph * 1.5)))
+        tx1 = max(0, x1 - int(pw * 0.08))
+        tx2 = min(w_frame, x2 + int(pw * 0.08))
 
         if ty2 > ty1 and tx2 > tx1:
             torso_crop = frame[ty1:ty2, tx1:tx2]
             hsv_torso = cv2.cvtColor(torso_crop, cv2.COLOR_BGR2HSV)
 
-            # High-visibility neon lime green/yellow, safety fluorescent orange, or retroreflective tape
-            neon_green = cv2.inRange(hsv_torso, np.array([18, 55, 60]), np.array([90, 255, 255]))
-            safety_orange = cv2.inRange(hsv_torso, np.array([3, 90, 85]), np.array([25, 255, 255]))
-            reflective_silver = cv2.inRange(hsv_torso, np.array([0, 0, 170]), np.array([180, 40, 255]))
+            # High-visibility neon lime green/yellow (expanded for indoor webcam white balance)
+            neon_green = cv2.inRange(hsv_torso, np.array([10, 15, 30]), np.array([100, 255, 255]))
+            # Fluorescent safety orange
+            safety_orange = cv2.inRange(hsv_torso, np.array([2, 22, 35]), np.array([28, 255, 255]))
+            # Retroreflective silver stripes / trim
+            reflective_silver = cv2.inRange(hsv_torso, np.array([0, 0, 110]), np.array([180, 70, 255]))
 
             vest_mask = cv2.bitwise_or(neon_green, safety_orange)
             vest_mask = cv2.bitwise_or(vest_mask, reflective_silver)
             vest_ratio = np.sum(vest_mask > 0) / float(max(1, vest_mask.size))
 
-            if vest_ratio > 0.075:
+            if vest_ratio > 0.015:
                 heuristics.append(
-                    PPEDetectionResult([tx1, ty1, tx2, ty2], "vest", min(0.96, float(0.72 + vest_ratio * 0.24)))
+                    PPEDetectionResult([tx1, ty1, tx2, ty2], "vest", min(0.96, float(0.80 + vest_ratio * 0.20)))
                 )
 
         # 3. Hand & Glove inspection (Left and Right lower flanks or chest hold)
@@ -417,21 +424,35 @@ class PPEDetector:
                     PPEDetectionResult([bx1, by1, bx2, by2], "boots", min(0.90, float(0.70 + boot_ratio * 0.20)))
                 )
 
-        # 5. Goggles / Protective Eyewear inspection (Mid-band of head crop)
+        # 5. Goggles / Spectacles / Protective Eyewear inspection (Eye band of face/head)
         if hy2 > hy1 and hx2 > hx1:
-            ey1 = min(h_frame, hy1 + int((hy2 - hy1) * 0.35))
-            ey2 = min(h_frame, hy1 + int((hy2 - hy1) * 0.70))
+            ey1 = min(h_frame, hy1 + int((hy2 - hy1) * 0.26))
+            ey2 = min(h_frame, hy1 + int((hy2 - hy1) * 0.72))
             if ey2 > ey1:
                 eye_crop = frame[ey1:ey2, hx1:hx2]
                 hsv_eye = cv2.cvtColor(eye_crop, cv2.COLOR_BGR2HSV)
-                # Anti-glare tint or frame contrast across eye bridge
-                polycarb = cv2.inRange(hsv_eye, np.array([0, 0, 180]), np.array([180, 40, 255]))
-                tinted = cv2.inRange(hsv_eye, np.array([90, 40, 50]), np.array([130, 200, 200]))
-                goggles_mask = cv2.bitwise_or(polycarb, tinted)
-                goggles_ratio = np.sum(goggles_mask > 0) / float(max(1, goggles_mask.size))
-                if goggles_ratio > 0.08:
+                gray_eye = cv2.cvtColor(eye_crop, cv2.COLOR_BGR2GRAY)
+
+                # Polycarbonate lens glare reflection
+                polycarb = cv2.inRange(hsv_eye, np.array([0, 0, 160]), np.array([180, 50, 255]))
+                poly_ratio = np.sum(polycarb > 0) / float(max(1, polycarb.size))
+
+                # Tinted safety glasses
+                tinted = cv2.inRange(hsv_eye, np.array([85, 30, 40]), np.array([135, 255, 255]))
+                tint_ratio = np.sum(tinted > 0) / float(max(1, tinted.size))
+
+                # Clear spectacles / safety frames: edge contrast of rims and nose bridge
+                edges = cv2.Canny(gray_eye, 35, 120)
+                edge_ratio = np.sum(edges > 0) / float(max(1, edges.size))
+
+                # Dark eyeglass frames
+                dark_frames = cv2.inRange(hsv_eye, np.array([0, 0, 0]), np.array([180, 255, 75]))
+                dark_ratio = np.sum(dark_frames > 0) / float(max(1, dark_frames.size))
+
+                # Match if frame contours or glare or tint present
+                if poly_ratio > 0.035 or tint_ratio > 0.035 or (edge_ratio > 0.035 and dark_ratio > 0.025):
                     heuristics.append(
-                        PPEDetectionResult([hx1, ey1, hx2, ey2], "goggles", min(0.88, float(0.70 + goggles_ratio * 0.20)))
+                        PPEDetectionResult([hx1, ey1, hx2, ey2], "goggles", 0.92)
                     )
 
         return heuristics

@@ -14,7 +14,7 @@ import { EntrantProfile } from './GateSentinelFeed';
 interface GateSentinelSidebarProps {
   entrant: EntrantProfile;
   onToggleGear: (gearKey: string) => void;
-  onToggleContraband: (itemKey: string) => void;
+  onToggleContraband?: (itemKey: string) => void;
   onRandomizePersona: () => void;
   onProceedToMonitoring: (targetCamId: number) => void;
 }
@@ -22,7 +22,6 @@ interface GateSentinelSidebarProps {
 export const GateSentinelSidebar: React.FC<GateSentinelSidebarProps> = ({
   entrant,
   onToggleGear,
-  onToggleContraband,
   onRandomizePersona,
   onProceedToMonitoring
 }) => {
@@ -38,13 +37,28 @@ export const GateSentinelSidebar: React.FC<GateSentinelSidebarProps> = ({
     ? '#fbbf24'
     : '#ff1744';
 
-  const gearItems = [
-    { key: 'helmet', name: 'Safety Hardhat', standard: 'IS 2925 / EN 397' },
-    { key: 'vest', name: 'Reflective Vest', standard: 'EN ISO 20471 Class 2' },
-    { key: 'gloves', name: 'Work Gloves', standard: 'EN 388 (Mechanical)' },
-    { key: 'boots', name: 'Steel Toe Boots', standard: 'IS 15298 / EN 20345' },
-    { key: 'goggles', name: 'Safety Goggles', standard: 'ANSI Z87.1 (Impact)' }
-  ];
+  const isConstruction = entrant.sector === 'Construction' || (entrant.required_ppe && (entrant.required_ppe.includes('safety_harness') || entrant.required_ppe.includes('welding_shield')));
+
+  const gearItems = isConstruction
+    ? [
+        { key: 'helmet', name: 'Construction Hardhat', standard: 'IS 2925 / EN 397 (Impact)' },
+        { key: 'vest', name: 'High-Vis Safety Vest', standard: 'EN ISO 20471 Class 2' },
+        { key: 'boots', name: 'Steel-Toe Work Boots', standard: 'IS 15298 / EN 20345' },
+        { key: 'gloves', name: 'Heavy Rigging Gloves', standard: 'EN 388 (Cut/Puncture)' },
+        { key: 'safety_harness', name: 'Fall Arrest Harness', standard: 'ANSI Z359 Class III' },
+        { key: 'welding_shield', name: 'Welding Face Shield', standard: 'EN 175 / ANSI Z87' },
+        { key: 'goggles', name: 'Impact Safety Goggles', standard: 'ANSI Z87.1 (Dust/Debris)' }
+      ]
+    : [
+        { key: 'helmet', name: 'Dielectric Hardhat', standard: 'Class E 20kV / IS 2925' },
+        { key: 'vest', name: 'Arc-Rated Safety Vest', standard: 'NFPA 70E / EN ISO 20471' },
+        { key: 'gloves', name: '1000V Insulated Gloves', standard: 'ASTM D120 Class 0' },
+        { key: 'goggles', name: 'Arc Flash Eye Shield', standard: 'ANSI Z87.1 / NFPA 70E' },
+        { key: 'boots', name: 'Dielectric EH Work Boots', standard: 'ASTM F2413 Electrical' }
+      ];
+
+  const totalRequired = entrant.required_ppe.length || (isConstruction ? 5 : 4);
+  const compliantCount = entrant.worn_ppe.filter((p) => entrant.required_ppe.includes(p)).length;
 
   return (
     <div
@@ -75,7 +89,7 @@ export const GateSentinelSidebar: React.FC<GateSentinelSidebarProps> = ({
             GATE 01 SENTINEL INSPECTOR
           </div>
           <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>
-            Turnstile Interlock & Entrant Verification
+            {isConstruction ? 'Construction Sector Airlock' : 'High-Voltage Electrical Airlock'}
           </div>
         </div>
 
@@ -129,7 +143,9 @@ export const GateSentinelSidebar: React.FC<GateSentinelSidebarProps> = ({
                   width: '32px',
                   height: '32px',
                   borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #0284c7, #00f2fe)',
+                  background: isConstruction
+                    ? 'linear-gradient(135deg, #ea580c, #f59e0b)'
+                    : 'linear-gradient(135deg, #0284c7, #00f2fe)',
                   color: '#ffffff',
                   fontWeight: 900,
                   fontSize: '13px',
@@ -141,7 +157,22 @@ export const GateSentinelSidebar: React.FC<GateSentinelSidebarProps> = ({
                 {entrant.name.charAt(0)}
               </div>
               <div>
-                <div style={{ fontSize: '12px', fontWeight: 800, color: '#ffffff' }}>{entrant.name}</div>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: '#ffffff' }}>
+                  {entrant.name}{' '}
+                  <span
+                    style={{
+                      fontSize: '9px',
+                      padding: '1px 5px',
+                      borderRadius: '3px',
+                      backgroundColor: isConstruction ? 'rgba(234, 88, 12, 0.25)' : 'rgba(2, 132, 199, 0.25)',
+                      color: isConstruction ? '#fb923c' : '#38bdf8',
+                      fontWeight: 700,
+                      marginLeft: '4px'
+                    }}
+                  >
+                    {isConstruction ? 'CONST' : 'ELEC'}
+                  </span>
+                </div>
                 <div style={{ fontSize: '10px', color: '#94a3b8' }}>
                   {entrant.emp_id} · {entrant.role}
                 </div>
@@ -172,17 +203,18 @@ export const GateSentinelSidebar: React.FC<GateSentinelSidebarProps> = ({
           </div>
         </div>
 
-        {/* 2. Real-Time PPE Verification Checklist (5 Items) */}
+        {/* 2. Real-Time PPE Verification Checklist */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
             <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.06em', color: '#94a3b8' }}>
-              PPE COMPLIANCE AUDIT ({entrant.worn_ppe.length}/5)
+              PPE COMPLIANCE AUDIT ({compliantCount}/{totalRequired})
             </span>
             <span style={{ fontSize: '9px', color: '#64748b' }}>Click item to toggle</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
             {gearItems.map((g) => {
+              const isRequired = entrant.required_ppe.includes(g.key);
               const isWorn = entrant.worn_ppe.includes(g.key);
               return (
                 <div
@@ -194,18 +226,43 @@ export const GateSentinelSidebar: React.FC<GateSentinelSidebarProps> = ({
                     justifyContent: 'space-between',
                     padding: '6px 10px',
                     borderRadius: '6px',
-                    backgroundColor: isWorn ? 'rgba(0, 230, 118, 0.08)' : 'rgba(255, 23, 68, 0.08)',
-                    border: `1px solid ${isWorn ? 'rgba(0, 230, 118, 0.3)' : 'rgba(255, 23, 68, 0.3)'}`,
+                    backgroundColor: isWorn
+                      ? 'rgba(0, 230, 118, 0.08)'
+                      : isRequired
+                      ? 'rgba(255, 23, 68, 0.08)'
+                      : 'rgba(30, 41, 59, 0.4)',
+                    border: `1px solid ${
+                      isWorn
+                        ? 'rgba(0, 230, 118, 0.3)'
+                        : isRequired
+                        ? 'rgba(255, 23, 68, 0.3)'
+                        : 'rgba(255, 255, 255, 0.08)'
+                    }`,
                     cursor: 'pointer',
                     transition: 'all 0.12s ease'
                   }}
-                  title={`Click to toggle ${g.name}`}
+                  title={`Click to toggle ${g.name} (${isRequired ? 'Mandatory for Dept' : 'Optional'})`}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {isWorn ? <CheckCircle size={12} color="#00e676" /> : <XCircle size={12} color="#ff1744" />}
-                    <div>
-                      <div style={{ fontSize: '11px', fontWeight: 700, color: isWorn ? '#f0fdf4' : '#fecaca' }}>
+                    {isWorn ? (
+                      <CheckCircle size={12} color="#00e676" />
+                    ) : isRequired ? (
+                      <XCircle size={12} color="#ff1744" />
+                    ) : (
+                      <div
+                        style={{
+                          width: '12px',
+                          height: '12px',
+                          borderRadius: '50%',
+                          border: '1px solid #64748b'
+                        }}
+                      />
+                    )}                      <div>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: isWorn ? '#f0fdf4' : isRequired ? '#fecaca' : '#94a3b8' }}>
                         {g.name}
+                        {isRequired && (
+                          <span style={{ fontSize: '8px', color: '#f59e0b', marginLeft: '4px' }}>MANDATORY</span>
+                        )}
                       </div>
                       <div style={{ fontSize: '9px', color: '#64748b' }}>{g.standard}</div>
                     </div>
@@ -215,48 +272,11 @@ export const GateSentinelSidebar: React.FC<GateSentinelSidebarProps> = ({
                     style={{
                       fontSize: '9px',
                       fontWeight: 800,
-                      color: isWorn ? '#00e676' : '#ff1744'
+                      color: isWorn ? '#00e676' : isRequired ? '#ff1744' : '#64748b'
                     }}
                   >
-                    {isWorn ? 'EQUIPPED' : 'MISSING'}
+                    {isWorn ? 'EQUIPPED' : isRequired ? 'MISSING' : 'NOT WORN'}
                   </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 3. Contraband Threat Screening */}
-        <div>
-          <div style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.06em', color: '#94a3b8', marginBottom: '6px' }}>
-            SECURITY & CONTRABAND SCAN
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-            {[
-              { key: 'knife', label: 'Weapons / Blades' },
-              { key: 'cigarettes', label: 'Cigarettes / Lighter' }
-            ].map((c) => {
-              const detected = entrant.contraband.includes(c.key);
-              return (
-                <div
-                  key={c.key}
-                  onClick={() => onToggleContraband(c.key)}
-                  style={{
-                    padding: '6px 8px',
-                    borderRadius: '6px',
-                    backgroundColor: detected ? 'rgba(255, 23, 68, 0.2)' : 'rgba(30, 41, 59, 0.5)',
-                    border: `1px solid ${detected ? '#ff1744' : 'rgba(255, 255, 255, 0.08)'}`,
-                    cursor: 'pointer'
-                  }}
-                  title={`Click to simulate ${c.label}`}
-                >
-                  <div style={{ fontSize: '10px', fontWeight: 700, color: detected ? '#f87171' : '#cbd5e1' }}>
-                    {c.label}
-                  </div>
-                  <div style={{ fontSize: '9px', fontWeight: 800, color: detected ? '#ff1744' : '#00e676', marginTop: '2px' }}>
-                    {detected ? 'DETECTED' : 'CLEAR'}
-                  </div>
                 </div>
               );
             })}
@@ -281,7 +301,7 @@ export const GateSentinelSidebar: React.FC<GateSentinelSidebarProps> = ({
                 ? 'DYNAMIC ADAPTIVE REROUTE'
                 : isBlocked
                 ? 'PPE DISPENSER REDIRECTION'
-                : 'SECURITY DISPATCH PROTOCOL'}
+                : 'AIRLOCK ACCESS HOLD'}
             </span>
           </div>
 
@@ -292,7 +312,7 @@ export const GateSentinelSidebar: React.FC<GateSentinelSidebarProps> = ({
               ? entrant.suggested_department || 'Warehouse Logistics Dock B (Zone 2 - Low Hazard)'
               : isBlocked
               ? 'Station 1A: PPE Dispenser Bay'
-              : 'Security Post 1: Gate Intercept'}
+              : 'Airlock Inspection Station'}
           </div>
 
           <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', lineHeight: '1.3' }}>
@@ -302,7 +322,7 @@ export const GateSentinelSidebar: React.FC<GateSentinelSidebarProps> = ({
               ? 'Lacks eye/hand protection for high-hazard bay. Dynamically reassigned to low-hazard logistics cell.'
               : isBlocked
               ? 'Access locked. Worker must equip safety helmet & vest at dispenser before entering.'
-              : 'Prohibited ignition/metallic item detected. Gate locked down.'}
+              : 'Airlock turnstile held. Worker protective equipment verification required.'}
           </div>
         </div>
 

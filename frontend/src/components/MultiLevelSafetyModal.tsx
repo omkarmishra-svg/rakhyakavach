@@ -313,7 +313,7 @@ export const MultiLevelSafetyModal: React.FC<MultiLevelSafetyModalProps> = ({
                             : '#94a3b8'
                         }}
                       >
-                        {isSelected ? '✓ ' : '+ '}
+                        {isSelected ? '[SELECTED] ' : '[ADD] '}
                         {item.label}
                       </button>
                     );

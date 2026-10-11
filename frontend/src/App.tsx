@@ -206,21 +206,53 @@ export const App: React.FC = () => {
     }));
   };
 
-  const handleGateRandomizePersona = () => {
-    const PERSONA_POOL = [
-      { name: 'Rajesh Kumar', emp_id: 'EMP-4109', role: 'Senior Plant Technician', dept: 'Main Electrical & Substation Bay' },
-      { name: 'Amit Sharma', emp_id: 'EMP-7821', role: 'Arc Welding Specialist', dept: 'Structural Fabrication Unit' },
-      { name: 'Pooja Verma', emp_id: 'EMP-3204', role: 'Robotics Automation Engineer', dept: 'Automated Machinery Cell' },
-      { name: 'Suresh Patel', emp_id: 'EMP-9055', role: 'Logistics Operations Lead', dept: 'Freight Staging & Loading Dock' },
-      { name: 'Vikram Singh', emp_id: 'EMP-6112', role: 'High-Voltage Switchgear Tech', dept: 'Transmission Line Grid' }
+  const handleGateRandomizePersona = async () => {
+    try {
+      const res = await fetch(`/api/personnel/random?exclude_emp_id=${gateEntrant.emp_id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.profile) {
+          const p = data.profile;
+          setGateEntrant((prev) => ({
+            ...prev,
+            emp_id: p.emp_id,
+            name: p.name,
+            role: p.role,
+            department: p.department,
+            sector: p.sector || 'Electrical',
+            destination_department: p.destination_department,
+            required_ppe: p.required_ppe,
+            guidance_route: p.guidance_route,
+            remedy_guidance: p.remedy_guidance,
+            missing_ppe: p.required_ppe.filter((r: string) => !prev.worn_ppe.includes(r))
+          }));
+          soundEngine.playChime();
+          return;
+        }
+      }
+    } catch {}
+
+    // Fallback pool with electrical and construction specialists
+    const SPECIALIST_POOL = [
+      { name: 'Rajesh Sharma', emp_id: 'ELEC-1041', role: 'Senior High-Voltage Lineman', dept: 'Grid Transmission & 66kV Substations', sector: 'Electrical', req: ['helmet', 'vest', 'goggles', 'gloves', 'boots'], dest: 'Bay 3 Switchgear Enclosure (Zone A)' },
+      { name: 'Arjun Deshmukh', emp_id: 'CONST-3081', role: 'High-Rise Scaffolding Lead', dept: 'Civil Structural & Scaffolding Division', sector: 'Construction', req: ['helmet', 'vest', 'boots', 'gloves', 'safety_harness'], dest: 'Tower Crane & Scaffolding Sector 7' },
+      { name: 'Kavita Reddy', emp_id: 'CONST-3120', role: 'Structural Steel Arc Welder', dept: 'Heavy Fabrication & Arc-Welding Bay', sector: 'Construction', req: ['helmet', 'vest', 'boots', 'gloves', 'welding_shield'], dest: 'Fabrication Bay 5 (Hot Work Zone)' },
+      { name: 'Amit Patel', emp_id: 'ELEC-1082', role: 'Substation Switchgear Electrician', dept: 'Substation Bay Ops', sector: 'Electrical', req: ['helmet', 'vest', 'goggles', 'gloves', 'boots'], dest: 'Substation Bay Ops (Room 102)' },
+      { name: 'Vikram Solanki', emp_id: 'CONST-3190', role: 'Tower Crane Specialist', dept: 'Heavy Lifting & Crane Rigging Sector', sector: 'Construction', req: ['helmet', 'vest', 'boots', 'gloves', 'safety_harness'], dest: 'Tower Crane TC-02 Base Station' },
+      { name: 'Sunil Kumar', emp_id: 'ELEC-1145', role: 'Underground Cable Jointer', dept: 'Distribution Network Operations', sector: 'Electrical', req: ['helmet', 'vest', 'goggles', 'gloves', 'boots'], dest: 'Underground Cable Tunnel Vault 4' }
     ];
-    const nextP = PERSONA_POOL[Math.floor(Math.random() * PERSONA_POOL.length)];
+    const filtered = SPECIALIST_POOL.filter((p) => p.emp_id !== gateEntrant.emp_id);
+    const nextP = filtered[Math.floor(Math.random() * filtered.length)] || SPECIALIST_POOL[0];
     setGateEntrant((prev) => ({
       ...prev,
       name: nextP.name,
       emp_id: nextP.emp_id,
       role: nextP.role,
-      department: nextP.dept
+      department: nextP.dept,
+      sector: nextP.sector,
+      destination_department: nextP.dest,
+      required_ppe: nextP.req,
+      missing_ppe: nextP.req.filter((r) => !prev.worn_ppe.includes(r))
     }));
     soundEngine.playChime();
   };

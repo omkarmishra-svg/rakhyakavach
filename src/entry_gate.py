@@ -58,64 +58,8 @@ class ContrabandDetector:
 
     @classmethod
     def scan_for_contraband(cls, frame_or_crop: np.ndarray) -> List[str]:
-        """
-        Scan image crop for prohibited items using Neural YOLOv8n + Edge Color/Texture heuristics.
-        Returns list of detected contraband tags (e.g. ['knife', 'cigarettes', 'cellphone']).
-        """
-        if frame_or_crop is None or frame_or_crop.size == 0:
-            return []
-
-        detected = []
-
-        # 1. Direct Neural Object Scan via YOLO COCO weights (knife, scissors, cell phone)
-        coco = cls.get_coco_model()
-        if coco is not None:
-            try:
-                preds = coco(frame_or_crop, conf=0.25, verbose=False)
-                if preds and len(preds) > 0 and preds[0].boxes is not None:
-                    names = coco.names
-                    for b in preds[0].boxes:
-                        cid = int(b.cls[0].cpu().numpy())
-                        cname = str(names.get(cid, "")).lower()
-                        if cname in ("knife", "scissors"):
-                            if "knife" not in detected:
-                                detected.append("knife")
-                        elif cname in ("cell phone", "phone"):
-                            if "cellphone" not in detected:
-                                detected.append("cellphone")
-            except Exception:
-                pass
-
-        # 2. Heuristic reflection and chromaticity scan
-        h, w = frame_or_crop.shape[:2]
-        hsv = cv2.cvtColor(frame_or_crop, cv2.COLOR_BGR2HSV)
-
-        # Knife / Metallic Blade inspection (High specular reflection + elongated aspect ratio)
-        gray = cv2.cvtColor(frame_or_crop, cv2.COLOR_BGR2GRAY)
-        gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
-        gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
-        mag = cv2.magnitude(gx, gy)
-        high_contrast_edges = np.sum(mag > 80) / float(max(1, mag.size))
-
-        metallic_sheen = cv2.inRange(hsv, np.array([0, 0, 205]), np.array([180, 35, 255]))
-        blade_pixel_ratio = np.sum(metallic_sheen > 0) / float(max(1, metallic_sheen.size))
-
-        # Cigarette / Flame Lighter inspection (Cigarette filter tan/orange + butane lighter casing)
-        tan_filter = cv2.inRange(hsv, np.array([10, 80, 100]), np.array([25, 200, 220]))
-        filter_ratio = np.sum(tan_filter > 0) / float(max(1, tan_filter.size))
-
-        lighter_body = cv2.inRange(hsv, np.array([0, 150, 150]), np.array([15, 255, 255]))
-        lighter_ratio = np.sum(lighter_body > 0) / float(max(1, lighter_body.size))
-
-        if blade_pixel_ratio > 0.08 and high_contrast_edges > 0.15:
-            if "knife" not in detected:
-                detected.append("knife")
-
-        if (filter_ratio > 0.05 and lighter_ratio > 0.04) or lighter_ratio > 0.12:
-            if "cigarettes" not in detected:
-                detected.append("cigarettes")
-
-        return detected
+        """Contraband scanning disabled per facility gate security policy."""
+        return []
 
 
 class SmartEntryGatekeeper:
@@ -192,6 +136,45 @@ class SmartEntryGatekeeper:
         })
         return record
 
+    def record_supervisor_deny(
+        self,
+        supervisor_id: str,
+        entrant_name: str,
+        entrant_emp_id: str,
+        reason: str
+    ) -> Dict[str, Any]:
+        """
+        Human-in-the-Loop Supervisor Manual Denial.
+        Locks turnstile under authorized supervisor authority and logs immutable audit trail.
+        """
+        record = {
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "event": "SUPERVISOR_MANUAL_DENIAL",
+            "supervisor_id": supervisor_id,
+            "entrant_name": entrant_name,
+            "entrant_emp_id": entrant_emp_id,
+            "reason": reason,
+            "turnstile_unlocked": False,
+            "access_status": "ACCESS_DENIED",
+            "audit_compliance": "OSHA_1910_AUTHORIZED_SUPERVISOR_DENIAL"
+        }
+        self.supervisor_overrides.insert(0, record)
+        self.recent_logs.insert(0, {
+            "timestamp": record["timestamp"],
+            "emp_id": entrant_emp_id,
+            "name": entrant_name,
+            "role": "Entrant",
+            "department": "Airlock Entry Checkpoint",
+            "access_status": "ACCESS_DENIED",
+            "turnstile_unlocked": False,
+            "decision_message": f"ENTRY REFUSED BY SUPERVISOR {supervisor_id}: {reason}",
+            "severity": "High",
+            "gate_id": "GATE-01-AIRLOCK",
+            "shield_admin_block": True,
+            "security_domain": "FACTORY_FLOOR_OPERATIONS_ONLY"
+        })
+        return record
+
     def evaluate_entry(
         self,
         frame: Optional[np.ndarray] = None,
@@ -225,8 +208,8 @@ class SmartEntryGatekeeper:
                 "turnstile_unlocked": True,
                 "fail_open_egress_unrestricted": True,
                 "magnetic_lock_mode": "DE_ENERGIZED_FAIL_OPEN",
-                "decision_message": "🚨 EMERGENCY EVACUATION ACTIVE: All gates unlocked for immediate egress.",
-                "active_guidance": "🏃 EVACUATE IMMEDIATELY: Follow illuminated emergency exit signs to Assembly Area A.",
+                "decision_message": "EMERGENCY EVACUATION ACTIVE: All gates unlocked for immediate egress.",
+                "active_guidance": "EVACUATE IMMEDIATELY: Follow illuminated emergency exit signs to Assembly Area A.",
                 "severity": "Critical",
                 "shield_admin_block": True
             }
@@ -267,13 +250,9 @@ class SmartEntryGatekeeper:
             except Exception:
                 crop_img = None
 
-        # Contraband / mischievous item detection
-        contraband = list(manual_contraband_check or [])
-        if crop_img is not None:
-            detected_contraband = self.contraband_detector.scan_for_contraband(crop_img)
-            for c in detected_contraband:
-                if c not in contraband:
-                    contraband.append(c)
+        # Contraband disabled per facility configuration
+        contraband = []
+        contraband_alert = None
 
         # Missing PPE analysis
         missing_items = []
@@ -282,80 +261,41 @@ class SmartEntryGatekeeper:
             if not matched:
                 missing_items.append(req)
 
-        # Alerts and Gate access decision with Dynamic Department Routing
-        contraband_alert = None
-        missing_ppe_alert = None
+        # Primary airlock compliance: Mandatory entrance gear is Helmet and High-Vis Vest
+        has_primary = ("helmet" in worn_items and "vest" in worn_items)
+        missing_str = ", ".join(m.replace("_", " ").title() for m in missing_items) if missing_items else "None"
+        worn_str = ", ".join(w.replace("_", " ").title() for w in worn_items) if worn_items else "None"
         suggested_department = dest_dept
+        missing_ppe_alert = None
 
-        if len(contraband) > 0:
-            access_status = "SECURITY_INTERCEPT"
-            turnstile_unlocked = False
-            contraband_str = ", ".join(c.upper() for c in contraband)
-            contraband_alert = f"🚨 SECURITY INTERCEPT: Prohibited item [{contraband_str}] detected on entrant {name} (Badge: {emp_id}, Dept: {dept})! Access Denied. Entry Turnstile locked. Plant Security notified."
-            decision_msg = contraband_alert
-            active_guidance = f"⛔ ACCESS HALTED: Please remain at Gate 1 Turnstile. Plant Security is en route regarding prohibited item inspection."
-            suggested_department = "Security Isolation Room (Gate 1)"
-            severity = "Critical"
-
-        elif len(missing_items) == 0:
-            # 1. Full PPE Compliance
+        if has_primary or len(missing_items) == 0:
+            # 1. Full Airlock Compliance (Helmet and Vest verified)
             access_status = "ENTERED"
             turnstile_unlocked = True
-            decision_msg = f"ACCESS GRANTED: All required PPE verified for {name}. Welcome."
-            active_guidance = f"🗺️ AUTHORIZED DESTINATION ({dest_dept}): {guidance_route}"
+            decision_msg = f"ACCESS GRANTED: Mandatory equipment (Helmet and High-Vis Vest) verified for {name}. Turnstile unlocked."
+            active_guidance = f"AUTHORIZED DESTINATION ({dest_dept}): {guidance_route}"
             suggested_department = dest_dept
             severity = "Low"
 
-        elif len(worn_items) >= 2:
-            # 2. Partial PPE Compliance: Dynamic Adaptive Department Suggestion!
-            missing_str = ", ".join(m.replace("_", " ").title() for m in missing_items)
-            worn_str = ", ".join(w.replace("_", " ").title() for w in worn_items)
-
-            if "vest" in worn_items and any(b in worn_items for b in ("boots", "gloves")):
-                suggested_department = "Warehouse Logistics & Freight Staging (Zone 2 - Low Hazard)"
-                access_status = "PARTIAL_REROUTE"
-                turnstile_unlocked = True
-                missing_ppe_alert = f"⚠️ CONDITIONAL REROUTE: Missing [{missing_str}] for {dest_dept}. Reassigned to {suggested_department} based on verified [{worn_str}]."
-                decision_msg = f"🔀 CONDITIONAL PASS: Re-assigned to Low-Hazard Logistics Bay based on verified [{worn_str}]. Primary destination requires [{missing_str}]."
-                active_guidance = f"🔀 DYNAMIC REROUTE: Proceed through Turnstile 1 along Green Walkway to Logistics & Freight Staging (Zone 2). OR detour to Dispenser Kiosk #2 (15m East) to equip [{missing_str}] for full High-Voltage access."
-                severity = "Medium"
-            elif "helmet" in worn_items and "vest" in worn_items:
-                suggested_department = "SCADA Automation & Control Center (Zone 3 - Low Voltage)"
-                access_status = "PARTIAL_REROUTE"
-                turnstile_unlocked = True
-                missing_ppe_alert = f"⚠️ CONDITIONAL REROUTE: Missing [{missing_str}] for field work. Reassigned to {suggested_department}."
-                decision_msg = f"🔀 CONDITIONAL PASS: Re-assigned to SCADA Control Center based on Helmet & Vest. Missing [{missing_str}] for active yard entry."
-                active_guidance = f"🔀 DYNAMIC REROUTE: Proceed through Turnstile 1 -> Follow Blue Safety Corridor to 2nd Floor SCADA Control Center (Zone 3). To enter High-Voltage Bay, equip missing gear at Kiosk #2."
-                severity = "Medium"
-            else:
-                suggested_department = "PPE Dispenser Kiosk #2 (Opposite Gate 1)"
-                access_status = "ACCESS_DENIED"
-                turnstile_unlocked = False
-                missing_ppe_alert = f"⚠️ ACCESS DENIED: Missing mandatory equipment [{missing_str}] for {name} ({dept}). Turnstile Locked."
-                decision_msg = f"ENTRY BLOCKED: Missing mandatory gear [{missing_str}]. Insufficient PPE for plant floor entry."
-                active_guidance = f"🔄 REMEDY NAVIGATION: Reroute to Safety Equipment Dispenser Kiosk #2 opposite Turnstile 1 to collect [{missing_str}]."
-                severity = "High"
-
-        elif len(worn_items) == 1:
-            # 3. Only 1 single item worn
-            missing_str = ", ".join(m.replace("_", " ").title() for m in missing_items)
-            access_status = "ACCESS_DENIED"
+        elif len(worn_items) > 0:
+            # 2. Partial PPE Compliance: Missing either helmet or vest -> Hold at airlock
+            access_status = "PARTIAL_REROUTE"
             turnstile_unlocked = False
+            missing_ppe_alert = f"PARTIAL PPE: Missing [{missing_str}]. Mandatory Helmet & Vest required."
+            decision_msg = f"AIRLOCK HOLD: Verified [{worn_str}]. Missing [{missing_str}]. Equip gear at dispenser or request supervisor override."
+            active_guidance = f"ROUTE GUIDANCE: Collect missing [{missing_str}] at Dispenser Kiosk #2 before entry."
             suggested_department = "PPE Dispenser Kiosk #2"
-            missing_ppe_alert = f"⚠️ ACCESS DENIED: Missing mandatory equipment [{missing_str}] for {name} ({dept}). Turnstile Locked."
-            decision_msg = f"ENTRY BLOCKED: Missing [{missing_str}]. Please don full required gear before entering."
-            active_guidance = f"🔄 REMEDY NAVIGATION: {remedy_guidance}"
-            severity = "High"
+            severity = "Medium"
 
         else:
-            # 4. Completely Wrong / Zero PPE Worn
+            # 3. Zero PPE Worn
             access_status = "ACCESS_DENIED"
             turnstile_unlocked = False
-            suggested_department = "Plant Safety Orientation Office"
-            missing_ppe_alert = f"⛔ ENTRY FORBIDDEN: Zero protective equipment detected on entrant {name}."
-            decision_msg = f"⛔ ENTRY FORBIDDEN: No safety gear detected. Plant floor entry strictly prohibited without mandatory PPE."
-            active_guidance = f"⛔ ACCESS DENIED: Turnstile Locked. Please report to Plant Safety Briefing Center or equip mandatory gear at Locker 1."
-            severity = "Critical"
+            suggested_department = "PPE Dispenser Kiosk"
+            missing_ppe_alert = f"ACCESS DENIED: Zero protective equipment detected on {name}."
+            decision_msg = f"ENTRY BLOCKED: No safety gear detected. Mandatory Helmet and High-Vis Vest required."
+            active_guidance = "ACCESS DENIED: Turnstile locked. Please equip safety gear at Dispenser Kiosk."
+            severity = "High"
 
         # Log entry with Fail-Safe and DPDP Act 2023 guarantees
         log_entry = {
@@ -364,6 +304,7 @@ class SmartEntryGatekeeper:
             "name": name,
             "role": role,
             "department": dept,
+            "sector": getattr(profile, "sector", "Electrical"),
             "destination_department": dest_dept,
             "suggested_department": suggested_department,
             "is_executive": is_executive,

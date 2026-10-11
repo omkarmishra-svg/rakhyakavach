@@ -24,12 +24,21 @@ class PersonnelProfile:
         avatar_color: str = "#3b82f6",
         destination_department: str = "",
         guidance_route: str = "",
-        remedy_guidance: str = ""
+        remedy_guidance: str = "",
+        sector: str = "Electrical"
     ):
         self.emp_id = emp_id
         self.name = name
         self.role = role
         self.department = department
+        if emp_id.startswith("CONST"):
+            self.sector = "Construction"
+        elif emp_id.startswith("CHEM"):
+            self.sector = "Chemical"
+        elif emp_id.startswith("EXEC"):
+            self.sector = "Executive"
+        else:
+            self.sector = sector or "Electrical"
         self.is_executive = is_executive
         self.required_ppe = [p.lower() for p in required_ppe]
         self.access_clearance = access_clearance
@@ -44,6 +53,7 @@ class PersonnelProfile:
             "name": self.name,
             "role": self.role,
             "department": self.department,
+            "sector": self.sector,
             "destination_department": self.destination_department,
             "is_executive": self.is_executive,
             "required_ppe": self.required_ppe,
@@ -264,6 +274,7 @@ class PersonnelRegistry:
             name="Kavita Reddy",
             role="Structural Steel & Heavy Fabrication Welder",
             department="Heavy Fabrication & Arc-Welding Bay",
+            sector="Construction",
             is_executive=False,
             required_ppe=["helmet", "vest", "boots", "gloves", "welding_shield"],
             access_clearance="Level 3 - Hot Work & Arc Radiation Certified",
@@ -271,6 +282,48 @@ class PersonnelRegistry:
             destination_department="Fabrication Bay 5 (Hot Work Zone)",
             guidance_route="Proceed through Turnstile 1 -> Walk down East Fabrication Aisle to Welding Bay 5.",
             remedy_guidance="Collect auto-darkening welding shield, leather welding gauntlets, and steel-toe boots at Kiosk #3."
+        ),
+        "CONST-3155": PersonnelProfile(
+            emp_id="CONST-3155",
+            name="Ramesh Yadav",
+            role="Civil Foundation & Structural Concrete Foreman",
+            department="Civil Structural & Site Concrete Works",
+            sector="Construction",
+            is_executive=False,
+            required_ppe=["helmet", "vest", "boots", "gloves"],
+            access_clearance="Level 2 - Heavy Civil Construction Floor",
+            avatar_color="#ea580c",
+            destination_department="Foundation Poured Bay Sector 4",
+            guidance_route="Proceed through Turnstile 1 -> Follow North Construction Road to Foundation Poured Bay Sector 4.",
+            remedy_guidance="Equip heavy-duty construction hardhat, high-vis vest, and steel-toe work boots at Kiosk #3."
+        ),
+        "CONST-3190": PersonnelProfile(
+            emp_id="CONST-3190",
+            name="Vikram Solanki",
+            role="Tower Crane & Work-at-Height Specialist",
+            department="Heavy Lifting & Crane Rigging Sector",
+            sector="Construction",
+            is_executive=False,
+            required_ppe=["helmet", "vest", "boots", "gloves", "safety_harness"],
+            access_clearance="Level 3 - Tower Crane & Work-at-Height Certified",
+            avatar_color="#c026d3",
+            destination_department="Tower Crane TC-02 Base Station",
+            guidance_route="Proceed through Turnstile 1 -> Route along Orange Safety Striping to Tower Crane TC-02.",
+            remedy_guidance="Collect ANSI-compliant Class III Full-Body Fall Arrest Harness at Rigging Kiosk #3."
+        ),
+        "CONST-3240": PersonnelProfile(
+            emp_id="CONST-3240",
+            name="Anil Chaudhary",
+            role="Heavy Earthmoving & Demolition Operator",
+            department="Civil Earthwork & Excavation Division",
+            sector="Construction",
+            is_executive=False,
+            required_ppe=["helmet", "vest", "boots", "goggles", "gloves"],
+            access_clearance="Level 2 - Heavy Equipment Operations",
+            avatar_color="#ca8a04",
+            destination_department="Excavation & Trenching Sector 2",
+            guidance_route="Proceed through Turnstile 1 -> Proceed to Heavy Equipment Marshalling Yard Sector 2.",
+            remedy_guidance="Equip impact goggles, heavy leather gloves, and steel-toe boots at Kiosk #3."
         ),
         # Executive Leadership & Plant Directors
         "EXEC-0012": PersonnelProfile(

@@ -1115,6 +1115,7 @@ def scan_gate_live(req: GateScanRequest):
         person_detected = False
         person_box = None
         norm_box = None
+        gear_boxes = []
 
         if frame is not None:
             h, w = frame.shape[:2]
@@ -1122,6 +1123,24 @@ def scan_gate_live(req: GateScanRequest):
 
             # Find person bounding boxes
             persons = [d for d in ppe_dets if d.class_name == "person"]
+
+            # Fallback 1: COCO pretrained neural detector for close-up webcam person verification
+            if not persons:
+                try:
+                    from src.entry_gate import ContrabandDetector
+                    coco = ContrabandDetector.get_coco_model()
+                    if coco is not None:
+                        preds = coco(frame, conf=0.25, verbose=False)
+                        if preds and len(preds) > 0 and preds[0].boxes is not None:
+                            for b in preds[0].boxes:
+                                cid = int(b.cls[0].cpu().numpy())
+                                if cid == 0:  # COCO class 0 = person
+                                    c_coords = b.xyxy[0].cpu().numpy().astype(int).tolist()
+                                    c_conf = float(b.conf[0].cpu().numpy())
+                                    persons.append(pipeline.ppe_detector.detect.__globals__["PPEDetectionResult"](c_coords, "person", c_conf))
+                except Exception as e:
+                    print(f"[scan_gate_live] COCO person detector note: {e}")
+
             if persons:
                 primary = max(persons, key=lambda p: (p.box[2] - p.box[0]) * (p.box[3] - p.box[1]))
                 bx1, by1, bx2, by2 = primary.box
@@ -1133,8 +1152,17 @@ def scan_gate_live(req: GateScanRequest):
                     round((bx2 / w) * 100, 2),
                     round((by2 / h) * 100, 2)
                 ]
+
+                # Run heuristics on the person box to supplement close-up webcam gear detection
+                try:
+                    h_results = pipeline.ppe_detector._estimate_ppe_heuristics(frame, person_box)
+                    for hr in h_results:
+                        if not any(d.class_name == hr.class_name for d in ppe_dets):
+                            ppe_dets.append(hr)
+                except Exception:
+                    pass
             else:
-                # Fallback: check if gear detected to infer person location
+                # Fallback 2: check if gear detected to infer person location
                 gear_dets = [d for d in ppe_dets if d.class_name in ("vest", "safety_vest", "safety-vest", "hardhat", "helmet", "boots")]
                 if gear_dets:
                     gx1 = max(0, min(d.box[0] for d in gear_dets) - 30)
@@ -1149,6 +1177,20 @@ def scan_gate_live(req: GateScanRequest):
                         round((gx2 / w) * 100, 2),
                         round((gy2 / h) * 100, 2)
                     ]
+                else:
+                    # Fallback 3: Center-frame heuristic for optical webcam close-up
+                    cw_box = [int(w * 0.08), int(h * 0.04), int(w * 0.92), int(h * 0.96)]
+                    try:
+                        h_results = pipeline.ppe_detector._estimate_ppe_heuristics(frame, cw_box)
+                        for hr in h_results:
+                            if not any(d.class_name == hr.class_name for d in ppe_dets):
+                                ppe_dets.append(hr)
+                        if any(hr.class_name in ("helmet", "vest") for hr in h_results):
+                            person_detected = True
+                            person_box = cw_box
+                            norm_box = [8.0, 4.0, 92.0, 96.0]
+                    except Exception:
+                        pass
 
             # Populate detected_ppe and gear_boxes for frontend HUD rendering
             gear_boxes = []
@@ -1165,38 +1207,60 @@ def scan_gate_live(req: GateScanRequest):
                 if "hardhat" in cls_name or "helmet" in cls_name:
                     if "no" not in cls_name:
                         mapped_name = "helmet"
-                        if "helmet" not in detected_ppe:
-                            detected_ppe.append("helmet")
                 elif "vest" in cls_name:
                     if "no" not in cls_name:
                         mapped_name = "vest"
-                        if "vest" not in detected_ppe:
-                            detected_ppe.append("vest")
                 elif "glove" in cls_name:
                     if "no" not in cls_name:
                         mapped_name = "gloves"
-                        if "gloves" not in detected_ppe:
-                            detected_ppe.append("gloves")
                 elif "goggle" in cls_name or "glass" in cls_name:
                     mapped_name = "goggles"
-                    if "goggles" not in detected_ppe:
-                        detected_ppe.append("goggles")
                 elif "boot" in cls_name or "shoe" in cls_name:
-                    mapped_name = "boots"
-                    if "boots" not in detected_ppe:
-                        detected_ppe.append("boots")
+                    if "no" not in cls_name:
+                        mapped_name = "boots"
+                elif "harness" in cls_name or "fall_arrest" in cls_name:
+                    if "no" not in cls_name:
+                        mapped_name = "safety_harness"
+                elif "welding" in cls_name or "shield" in cls_name:
+                    mapped_name = "welding_shield"
+                elif "chemical_suit" in cls_name or "hazmat" in cls_name:
+                    if "no" not in cls_name:
+                        mapped_name = "chemical_suit"
+                elif "respirator" in cls_name or "gas_mask" in cls_name:
+                    if "no" not in cls_name:
+                        mapped_name = "chemical_respirator"
 
                 if mapped_name:
+                    if mapped_name not in detected_ppe:
+                        detected_ppe.append(mapped_name)
                     gear_boxes.append({
                         "gear": mapped_name,
                         "box": norm_gbox,
                         "confidence": round(d.confidence, 2)
                     })
-        else:
-            gear_boxes = []
+
+        # High-Speed Multi-Modal LLM Visual Auditor (Groq Llama-3.2 Vision / Gemini Flash)
+        # Prevents heuristic hallucination by verifying actual human presence and worn gear via VLM
+        llm_ppe_res = None
+        if img_payload and (vision_agent.groq_client or vision_agent.gemini_model):
+            try:
+                llm_ppe_res = vision_agent.inspect_entrant_ppe_with_llm(img_payload)
+            except Exception as e:
+                print(f"[scan_gate_live] LLM inspection note: {e}")
+
+        if llm_ppe_res is not None:
+            llm_person = llm_ppe_res.get("person_detected", False)
+            if not llm_person:
+                person_detected = False
+                detected_ppe = []
+            else:
+                person_detected = True
+                detected_ppe = list(llm_ppe_res.get("worn_ppe", []))
+                if norm_box is None:
+                    norm_box = [15.0, 5.0, 85.0, 95.0]
 
         should_assign_random = bool(req.assign_random)
-        if person_detected and (req.assign_random or not emp_id):
+        if person_detected and not emp_id and not should_assign_random:
             should_assign_random = True
 
         res = smart_entry_gatekeeper.evaluate_entry(
@@ -1208,6 +1272,10 @@ def scan_gate_live(req: GateScanRequest):
             assign_random=should_assign_random,
             manual_contraband_check=req.manual_contraband or []
         )
+
+        if llm_ppe_res and llm_ppe_res.get("decision_message") and person_detected:
+            res["decision_message"] = llm_ppe_res["decision_message"]
+            res["llm_engine"] = llm_ppe_res.get("engine")
         return {
             "ok": True,
             "person_detected": person_detected,
@@ -1273,6 +1341,25 @@ def supervisor_gate_override(req: SupervisorOverrideRequest):
             reason=req.reason
         )
         return {"ok": True, "override": res}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/gate/supervisor-deny")
+def supervisor_gate_deny(req: SupervisorOverrideRequest):
+    """
+    Human-in-the-Loop Supervisor Manual Access Denial.
+    Locks turnstile under authorized supervisor authority and logs immutable audit trail.
+    """
+    try:
+        from src.entry_gate import smart_entry_gatekeeper
+        res = smart_entry_gatekeeper.record_supervisor_deny(
+            supervisor_id=req.supervisor_id,
+            entrant_name=req.entrant_name,
+            entrant_emp_id=req.entrant_emp_id,
+            reason=req.reason
+        )
+        return {"ok": True, "denial": res}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

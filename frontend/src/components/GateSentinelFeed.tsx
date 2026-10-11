@@ -16,8 +16,7 @@ import {
   CheckCircle2,
   XCircle,
   Volume2,
-  VolumeX,
-  Megaphone
+  VolumeX
 } from 'lucide-react';
 import { soundEngine } from '../utils/audio';
 
@@ -544,9 +543,17 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
           </span>
         </div>
 
-        <div className="feed-actions-group">
-          {/* Stream Source Toggle */}
-          <div style={{ display: 'inline-flex', background: 'rgba(15, 23, 42, 0.8)', padding: '2px', borderRadius: '5px', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="feed-actions-group" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* Stream Source Toggle (Segmented Pill) */}
+          <div
+            style={{
+              display: 'inline-flex',
+              background: 'rgba(15, 23, 42, 0.85)',
+              padding: '2px',
+              borderRadius: '6px',
+              border: '1px solid rgba(255, 255, 255, 0.12)'
+            }}
+          >
             <button
               onClick={() => {
                 setStreamSource('webcam');
@@ -555,102 +562,117 @@ export const GateSentinelFeed: React.FC<GateSentinelFeedProps> = ({
               style={{
                 padding: '4px 10px',
                 fontSize: '11px',
-                fontWeight: 800,
+                fontWeight: 700,
                 borderRadius: '4px',
                 border: 'none',
                 cursor: 'pointer',
                 background: streamSource === 'webcam' ? '#00f2fe' : 'transparent',
-                color: streamSource === 'webcam' ? '#0f172a' : '#94a3b8',
+                color: streamSource === 'webcam' ? '#0a0f1d' : '#94a3b8',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '4px'
+                gap: '5px',
+                transition: 'all 0.15s ease'
               }}
-              title="Optical Webcam Stream"
+              title="Switch to Laptop Webcam feed"
             >
               <Camera size={12} />
-              WEBCAM
+              Webcam
             </button>
             <button
               onClick={() => setStreamSource('cctv')}
               style={{
                 padding: '4px 10px',
                 fontSize: '11px',
-                fontWeight: 800,
+                fontWeight: 700,
                 borderRadius: '4px',
                 border: 'none',
                 cursor: 'pointer',
                 background: streamSource === 'cctv' ? '#00f2fe' : 'transparent',
-                color: streamSource === 'cctv' ? '#0f172a' : '#94a3b8',
+                color: streamSource === 'cctv' ? '#0a0f1d' : '#94a3b8',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '4px'
+                gap: '5px',
+                transition: 'all 0.15s ease'
               }}
-              title="Factory CCTV Gate stream"
+              title="Switch to Factory CCTV stream"
             >
               <Video size={12} />
-              CCTV GATE FEED
+              CCTV Feed
             </button>
           </div>
 
-          {/* Randomize Persona */}
+          {/* Next Worker Persona */}
           <button
             className="feed-mini-btn"
             onClick={onRandomizePersona}
-            title="Simulate next entrant: generate random worker persona (Name, ID, Role)"
+            title="Simulate next entrant: generate random worker persona"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 9px',
+              borderRadius: '6px'
+            }}
           >
             <RefreshCw size={12} />
-            <span>New Persona</span>
+            <span>Next Worker</span>
           </button>
 
           {/* Privacy Blur Toggle */}
           <button
             className="feed-mini-btn"
             onClick={() => setDpdpBlur(!dpdpBlur)}
-            title="Toggle DPDP Act 2023 Face Anonymization Blur"
-            style={{ color: dpdpBlur ? '#00e676' : '#94a3b8' }}
+            title="Toggle DPDP Act 2023 Face Privacy Blur"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 9px',
+              borderRadius: '6px',
+              color: dpdpBlur ? '#00e676' : '#94a3b8',
+              borderColor: dpdpBlur ? 'rgba(0, 230, 118, 0.35)' : 'rgba(255, 255, 255, 0.1)'
+            }}
           >
             <UserCheck size={12} />
-            <span>{dpdpBlur ? 'DPDP BLUR: ON' : 'DPDP BLUR: OFF'}</span>
+            <span>{dpdpBlur ? 'Privacy Blur: ON' : 'Privacy Blur: OFF'}</span>
           </button>
 
           {/* Supervisor Voice Warning Toggle */}
           <button
             className="feed-mini-btn"
             onClick={() => setVoiceAlertsEnabled(!voiceAlertsEnabled)}
-            title="Toggle Automated Supervisor Voice Warning Audio"
-            style={{ color: voiceAlertsEnabled ? '#00e676' : '#94a3b8' }}
+            title="Toggle Automated Supervisor Voice Advisory"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 9px',
+              borderRadius: '6px',
+              color: voiceAlertsEnabled ? '#00e676' : '#94a3b8',
+              borderColor: voiceAlertsEnabled ? 'rgba(0, 230, 118, 0.35)' : 'rgba(255, 255, 255, 0.1)'
+            }}
           >
             {voiceAlertsEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
-            <span>{voiceAlertsEnabled ? 'VOICE ALERT: ON' : 'VOICE ALERT: OFF'}</span>
-          </button>
-
-          {/* Test Voice Warning Button */}
-          <button
-            className="feed-mini-btn"
-            onClick={() => {
-              const testMissing =
-                entrant.missing_ppe && entrant.missing_ppe.length > 0
-                  ? entrant.missing_ppe.join(' and ')
-                  : 'Helmet and Safety Vest';
-              speakVoiceWarning(
-                `Attention Supervisor: Worker ${entrant.name} is missing ${testMissing}. Turnstile locked at Gate 1.`,
-                true
-              );
-            }}
-            title="Test real-time supervisor voice warning"
-            style={{ color: '#00f2fe' }}
-          >
-            <Megaphone size={12} />
-            <span>TEST VOICE</span>
+            <span>{voiceAlertsEnabled ? 'Voice Advisory: ON' : 'Voice Advisory: OFF'}</span>
           </button>
 
           {/* Play/Pause */}
-          <button className="feed-mini-btn" onClick={togglePlay} title={isPlaying ? 'Pause' : 'Play'}>
+          <button
+            className="feed-mini-btn"
+            onClick={togglePlay}
+            title={isPlaying ? 'Pause Feed' : 'Resume Feed'}
+            style={{ padding: '4px 8px', borderRadius: '6px' }}
+          >
             {isPlaying ? <Pause size={12} /> : <Play size={12} />}
           </button>
 
           {/* Fullscreen */}
-          <button className="feed-mini-btn btn-fullscreen" onClick={handleToggleFullscreen} title="Full Screen">
+          <button
+            className="feed-mini-btn btn-fullscreen"
+            onClick={handleToggleFullscreen}
+            title="Full Screen"
+            style={{ padding: '4px 8px', borderRadius: '6px' }}
+          >
             <Maximize2 size={12} />
           </button>
         </div>

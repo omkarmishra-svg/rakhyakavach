@@ -12,12 +12,13 @@ import { MultiCameraFeed } from './components/MultiCameraFeed';
 import { MultiLevelSafetyModal } from './components/MultiLevelSafetyModal';
 import { GateSentinelFeed, DEFAULT_ENTRANT, EntrantProfile } from './components/GateSentinelFeed';
 import { GateSentinelSidebar } from './components/GateSentinelSidebar';
+import { SupervisorLogin } from './components/SupervisorLogin';
 
 import {
   INITIAL_ZONES,
   INITIAL_TELEMETRY
 } from './data/mockData';
-import { Zone, Incident, IncidentStatus, DetectionItem, PlantTelemetry, HourlyViolation } from './types';
+import { Zone, Incident, IncidentStatus, DetectionItem, PlantTelemetry, HourlyViolation, Supervisor } from './types';
 import { soundEngine } from './utils/audio';
 import { Video, Camera, Radio, UserCheck } from 'lucide-react';
 
@@ -78,6 +79,15 @@ const CAMERAS: CameraItem[] = [
 ];
 
 export const App: React.FC = () => {
+  const [supervisor, setSupervisor] = useState<Supervisor | null>(() => {
+    try {
+      const saved = localStorage.getItem('raksha_supervisor_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [currentTab, setCurrentTab] = useState<NavTab>('vision');
   const [zones] = useState<Zone[]>(INITIAL_ZONES);
   const [telemetry, setTelemetry] = useState<PlantTelemetry>(INITIAL_TELEMETRY);
@@ -456,6 +466,16 @@ export const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('raksha_supervisor_session');
+    setSupervisor(null);
+  };
+
+  // Enforce Supervisor Authentication Gate — Zero mock credentials permitted
+  if (!supervisor) {
+    return <SupervisorLogin onLoginSuccess={(sup) => setSupervisor(sup)} />;
+  }
+
   return (
     <div className="instrument-wall">
       {/* 1. Top Navigation Bar with Live Vision / Audit Logs / Analysis */}
@@ -463,6 +483,8 @@ export const App: React.FC = () => {
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
         telemetry={telemetry}
+        supervisor={supervisor}
+        onLogout={handleLogout}
         onOpenOshaModal={() => setIsOshaModalOpen(true)}
         onOpenMultiLevelLLM={() => setIsMultiLevelModalOpen(true)}
       />

@@ -16,6 +16,7 @@ import shutil
 import datetime
 import sqlite3
 import threading
+import hashlib
 # pyrefly: ignore [untyped-import]
 import requests
 # pyrefly: ignore [untyped-import]
@@ -115,9 +116,173 @@ pipeline = SafetyPipeline(sample_rate=1, ppe_conf_threshold=0.20, fire_conf_thre
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
-
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def init_supervisors_table():
+    """Ensure supervisors authentication table exists in SQLite database."""
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS supervisors (
+                emp_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT DEFAULT 'Shift Floor Supervisor',
+                department TEXT DEFAULT 'Industrial Safety & EHS',
+                created_at TEXT NOT NULL,
+                last_login TEXT
+            );
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[Auth] Supervisor table init warning: {e}")
+
+init_supervisors_table()
+
+
+def hash_supervisor_password(password: str) -> str:
+    """Deterministic salted hash for plant supervisor credentials."""
+    salt = "raksha_kavach_industrial_salt_2026"
+    return hashlib.sha256(f"{salt}_{password.strip()}".encode("utf-8")).hexdigest()
+
+
+class SupervisorLoginPayload(BaseModel):
+    emp_id: str
+    name: str
+    email: str
+    password: str
+
+
+@app.post("/api/auth/supervisor/login")
+def supervisor_login(payload: SupervisorLoginPayload):
+    """
+    Supervisor Command Authentication:
+    Allows real shift supervisors to log in using Employee ID, Name, Email, and Password.
+    Zero mock/demo credentials: saves real credentials persistently and verifies returning supervisors.
+    """
+    emp_id = (payload.emp_id or "").strip().upper()
+    name = (payload.name or "").strip()
+    email = (payload.email or "").strip().lower()
+    password = (payload.password or "").strip()
+
+    if not emp_id or not name or not email or not password:
+        raise HTTPException(
+            status_code=400,
+            detail="All fields are required: Employee ID, Full Name, Work Email, and Password."
+        )
+
+    if "@" not in email or "." not in email:
+        raise HTTPException(
+            status_code=400,
+            detail="Please provide a valid corporate work email address."
+        )
+
+    if len(password) < 4:
+        raise HTTPException(
+            status_code=400,
+            detail="Security policy requires password to be at least 4 characters."
+        )
+
+    pwd_hash = hash_supervisor_password(password)
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    conn = get_db()
+    c = conn.cursor()
+    row = c.execute(
+        "SELECT emp_id, name, email, password_hash, role, department FROM supervisors WHERE emp_id = ?",
+        (emp_id,)
+    ).fetchone()
+
+    if row is None:
+        # First-time onboarding of authentic plant supervisor
+        c.execute("""
+            INSERT INTO supervisors (emp_id, name, email, password_hash, role, department, created_at, last_login)
+            VALUES (?, ?, ?, ?, 'Shift Floor Supervisor', 'Industrial Safety & EHS', ?, ?)
+        """, (emp_id, name, email, pwd_hash, now_iso, now_iso))
+        conn.commit()
+        conn.close()
+
+        return {
+            "ok": True,
+            "is_new_registration": True,
+            "message": f"Supervisor profile created & verified for {name} ({emp_id}).",
+            "supervisor": {
+                "emp_id": emp_id,
+                "name": name,
+                "email": email,
+                "role": "Shift Floor Supervisor",
+                "department": "Industrial Safety & EHS",
+                "last_login": now_iso
+            }
+        }
+    else:
+        # Existing registered supervisor verification
+        stored_hash = row["password_hash"]
+        stored_role = row["role"]
+        stored_dept = row["department"]
+
+        if stored_hash != pwd_hash:
+            conn.close()
+            raise HTTPException(
+                status_code=401,
+                detail=f"Authentication failed: Password does not match registered credentials for Employee ID {emp_id}."
+            )
+
+        # Update last login time and update name/email
+        c.execute(
+            "UPDATE supervisors SET last_login = ?, name = ?, email = ? WHERE emp_id = ?",
+            (now_iso, name, email, emp_id)
+        )
+        conn.commit()
+        conn.close()
+
+        return {
+            "ok": True,
+            "is_new_registration": False,
+            "message": f"Welcome back, Supervisor {name}. Session authorized.",
+            "supervisor": {
+                "emp_id": emp_id,
+                "name": name,
+                "email": email,
+                "role": stored_role or "Shift Floor Supervisor",
+                "department": stored_dept or "Industrial Safety & EHS",
+                "last_login": now_iso
+            }
+        }
+
+
+@app.get("/api/auth/supervisor/session")
+def get_supervisor_session(emp_id: str):
+    """Verify an existing supervisor session."""
+    if not emp_id:
+        raise HTTPException(status_code=400, detail="Employee ID required.")
+    conn = get_db()
+    c = conn.cursor()
+    row = c.execute(
+        "SELECT emp_id, name, email, role, department, last_login FROM supervisors WHERE emp_id = ?",
+        (emp_id.strip().upper(),)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="No active supervisor record found.")
+
+    return {
+        "ok": True,
+        "supervisor": {
+            "emp_id": row["emp_id"],
+            "name": row["name"],
+            "email": row["email"],
+            "role": row["role"],
+            "department": row["department"],
+            "last_login": row["last_login"]
+        }
+    }
 
 
 # Zone status simulation

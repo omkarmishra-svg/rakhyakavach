@@ -1,15 +1,16 @@
 import React from 'react';
 import {
   Camera,
-  Shield,
   FileText,
   BarChart2,
   Volume2,
   VolumeX,
   Maximize2,
-  Award
+  Award,
+  LogOut,
+  UserCheck
 } from 'lucide-react';
-import { PlantTelemetry } from '../types';
+import { PlantTelemetry, Supervisor } from '../types';
 import { soundEngine } from '../utils/audio';
 
 export type NavTab = 'vision' | 'incidents' | 'analytics';
@@ -18,6 +19,8 @@ interface NavBarProps {
   currentTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
   telemetry: PlantTelemetry;
+  supervisor?: Supervisor | null;
+  onLogout?: () => void;
   onOpenOshaModal?: () => void;
   onOpenMultiLevelLLM?: () => void;
 }
@@ -26,6 +29,8 @@ export const NavBar: React.FC<NavBarProps> = ({
   currentTab,
   onSelectTab,
   telemetry,
+  supervisor,
+  onLogout,
   onOpenOshaModal
 }) => {
   const [isMuted, setIsMuted] = React.useState<boolean>(false);
@@ -61,7 +66,11 @@ export const NavBar: React.FC<NavBarProps> = ({
       {/* Brand & Live Indicator */}
       <div className="navbar-brand-section">
         <div className="navbar-logo-badge" title="Raksha Kavach: AI Industrial Safety Sentinel">
-          <Shield size={20} className="brand-icon" />
+          <img
+            src="/logo.png"
+            alt="Raksha Kavach Logo"
+            className="navbar-brand-logo-img"
+          />
           <div className="brand-text-container">
             <span className="brand-title">RAKSHA KAVACH</span>
             <span className="brand-subtitle">AI SAFETY SENTINEL</span>
@@ -133,6 +142,29 @@ export const NavBar: React.FC<NavBarProps> = ({
           </button>
         )}
 
+        {/* Supervisor Session Status Badge & Logout */}
+        {supervisor && (
+          <div className="navbar-supervisor-badge" title={`Shift Supervisor: ${supervisor.name} | EmpID: ${supervisor.emp_id} | ${supervisor.email}`}>
+            <div className="supervisor-badge-icon">
+              <UserCheck size={14} />
+            </div>
+            <div className="supervisor-badge-info">
+              <span className="supervisor-badge-name">{supervisor.name}</span>
+              <span className="supervisor-badge-id">{supervisor.emp_id}</span>
+            </div>
+            {onLogout && (
+              <button
+                className="supervisor-logout-btn"
+                onClick={onLogout}
+                title="Log Out Supervisor Session"
+                aria-label="Log out"
+              >
+                <LogOut size={13} />
+                <span>EXIT</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Quick Tools Group: Siren Mute & Fullscreen */}
         <div className="navbar-quick-tools">
